@@ -164,7 +164,8 @@ class Solver(QThread):
     def _phase_cross_correlation_wrapper(self, base, current, upsample_factor):
         current, pixels = self._filter_image_subset(current)  # only filter 'current' image as 'base' was already filtered in the previous pass
 
-        base_ft = np.fft.fft2(base)  # reusing the Fourier Transform later doesn't lead to noticeable performance improvements but instead makes debugging impossible
+        # reusing the Fourier Transform later doesn't lead to noticeable performance improvements but instead makes debugging impossible
+        base_ft = np.fft.fft2(base)
         current_ft = np.fft.fft2(current)
 
         if self.matlab is False:
@@ -217,12 +218,12 @@ class Solver(QThread):
 
             print("Box %d (%d, %d, %d, %d)." % (j, self.row_min[j], self.row_max[j], self.col_min[j], self.col_max[j]))
 
-            self.pixels[j][self.start_frame] = pixels
-            self.shift_x[j][self.start_frame] = 0
-            self.shift_y[j][self.start_frame] = 0
-            self.shift_p[j][self.start_frame] = 0
-            self.shift_x_y_error[j][self.start_frame] = 0
-            self.box_shift[j][self.start_frame] = [0, 0]
+            self.pixels[j][0] = pixels
+            self.shift_x[j][0] = 0
+            self.shift_y[j][0] = 0
+            self.shift_p[j][0] = 0
+            self.shift_x_y_error[j][0] = 0
+            self.box_shift[j][0] = [0, 0]
 
             self.centers_dict[j] = [
                 int(self.box_dict[j].x_rect) + self.box_dict[j].rect._width / 2,
@@ -241,14 +242,16 @@ class Solver(QThread):
 
             self.current_i = i
 
+            offset = i - self.start_frame
+
             if next_frame is None:
-                self.frame_n = self._prepare_image(self.videodata.get_frame(i))
+                self.frame_n = self._prepare_image(self.videodata.get_frame(offset))
             else:
                 self.frame_n = self._prepare_image(next_frame.result())
 
-                if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
+                if offset < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
                     with concurrent.futures.ThreadPoolExecutor() as executor:
-                        next_frame = executor.submit(self.videodata.get_frame, i + 1)
+                        next_frame = executor.submit(self.videodata.get_frame, offset + 1)
 
             if self.write_target is not None:
                 colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
@@ -256,8 +259,8 @@ class Solver(QThread):
             parameters = [None for _ in range(len(self.box_dict))]
             for j in range(len(self.box_dict)):  # j iterates over all boxes
                 # Propagate previous box shifts
-                self.box_shift[j][i][0] = self.box_shift[j][i - 1][0]
-                self.box_shift[j][i][1] = self.box_shift[j][i - 1][1]
+                self.box_shift[j][offset][0] = self.box_shift[j][offset - 1][0]
+                self.box_shift[j][offset][1] = self.box_shift[j][offset - 1][1]
 
                 # Shift before analysis (for the next frame)
                 to_shift = [0, 0]
@@ -267,13 +270,14 @@ class Solver(QThread):
                         self._close_to_zero(self.cumulated_shift[j][1])
                     ]
 
-                    print("Box %d - to shift: (%f, %f), cumulated shift: (%f, %f)." % (j, to_shift[0], to_shift[1], self.cumulated_shift[j][0], self.cumulated_shift[j][1]))
+                    print("Box %d - to shift: (%f, %f), cumulated shift: (%f, %f)." % (
+                        j, to_shift[0], to_shift[1], self.cumulated_shift[j][0], self.cumulated_shift[j][1]))
 
                     self.cumulated_shift[j][0] -= to_shift[0]
                     self.cumulated_shift[j][1] -= to_shift[1]
 
-                    self.box_shift[j][i][0] += to_shift[0]
-                    self.box_shift[j][i][1] += to_shift[1]
+                    self.box_shift[j][offset][0] += to_shift[0]
+                    self.box_shift[j][offset][1] += to_shift[1]
 
                     print("Box %d - shifted at frame %d (~%ds)." % (j, i, i / self.fps))
 
@@ -287,7 +291,7 @@ class Solver(QThread):
 
             for j in range(len(self.box_dict)):
                 image_n, pixels, shift, error, phase = results[j]
-                self.pixels[j][i] = pixels
+                self.pixels[j][offset] = pixels
 
                 shift[0], shift[1] = -shift[1], -shift[0]  # (-y, -x) → (x, y)
 
@@ -306,9 +310,9 @@ class Solver(QThread):
                 # TODO: fix error computation
                 if self.compare_first:
                     relative_shift = [
-                        shift[0] - self.shift_x[j][i - 1],
-                        shift[1] - self.shift_y[j][i - 1],
-                        phase - self.shift_p[j][i - 1]
+                        shift[0] - self.shift_x[j][offset - 1],
+                        shift[1] - self.shift_y[j][offset - 1],
+                        phase - self.shift_p[j][offset - 1]
                     ]
 
                     # computed_error = error
@@ -319,21 +323,21 @@ class Solver(QThread):
                         phase
                     ]
 
-                    # computed_error = error + self.shift_x_y_error[j][i - 1]
+                    # computed_error = error + self.shift_x_y_error[j][offset - 1]
 
                 self.cumulated_shift[j][0] += relative_shift[0]
                 self.cumulated_shift[j][1] += relative_shift[1]
 
-                self.shift_x[j][i] = self.shift_x[j][i - 1] + relative_shift[0]
-                self.shift_y[j][i] = self.shift_y[j][i - 1] + relative_shift[1]
-                self.shift_p[j][i] = self.shift_p[j][i - 1] + relative_shift[2]
+                self.shift_x[j][offset] = self.shift_x[j][offset - 1] + relative_shift[0]
+                self.shift_y[j][offset] = self.shift_y[j][offset - 1] + relative_shift[1]
+                self.shift_p[j][offset] = self.shift_p[j][offset - 1] + relative_shift[2]
 
-                self.shift_x_y_error[j][i] = computed_error
+                self.shift_x_y_error[j][offset] = computed_error
 
                 # TODO: phase difference
                 # TODO: take into account rotation (https://scikit-image.org/docs/stable/auto_examples/registration/plot_register_rotation.html).
 
-                self._draw_arrow(j, self.shift_x[j][i] + self.box_shift[j][i][0], self.shift_y[j][i] + self.box_shift[j][i][1])
+                self._draw_arrow(j, self.shift_x[j][offset] + self.box_shift[j][offset][0], self.shift_y[j][offset] + self.box_shift[j][offset][1])
 
                 # if j == 1:
                 #     print("Box %d - raw shift: (%f, %f), relative shift: (%f, %f), cumulated shift: (%f, %f), error: %f."
@@ -347,7 +351,7 @@ class Solver(QThread):
 
                 if i in self.debug_frames:
                     print("Box %d, frame %d." % (j, i))
-                    print("Previous shift: %f, %f." % (self.shift_x[j][i - 1], self.shift_y[j][i - 1]))
+                    print("Previous shift: %f, %f." % (self.shift_x[j][offset - 1], self.shift_y[j][offset - 1]))
                     print("Current shift: %f, %f." % (shift[0], shift[1]))
                     print("Relative shift: %f, %f." % (relative_shift[0], relative_shift[1]))
 
@@ -370,7 +374,7 @@ class Solver(QThread):
 
             self.progress = int(((i - self.start_frame) / length) * 100)
             if self.progress > progress_pivot + 4:
-                print("%d%% (frame %d/%d)." % (self.progress, i - self.start_frame, self.stop_frame - self.start_frame))
+                print("%d%% (frame: %d/%d, real frame: %d)." % (self.progress, offset, self.stop_frame - self.start_frame, i))
                 progress_pivot = self.progress
 
         # Post-process data (invert y-dimension)

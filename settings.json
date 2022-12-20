@@ -1,20 +1,20 @@
 {
-    "last_file": "F:/EPFL/Capture/Pombe 2021-05-28/Series A/5m_1_ctrl.mp4",
+    "last_file": "F:/EPFL/Capture/Cerevisiae 2022-12-20/Series A/5m_1_ctrl.mp4",
     "parameters": {
         "pixel_size": 1.67,
         "magnification": 0,
-        "sub_pixel": 10,
+        "sub_pixel": 1,
         "fps": 27,
-        "start_frame": 0,
-        "stop_frame": 540,
-        "box_width": 55,
-        "box_height": 55,
+        "start_frame": 10,
+        "stop_frame": 550,
+        "box_width": 40,
+        "box_height": 40,
         "chop_sec": 2,
         "tracking": true,
         "compare_to_first": true,
         "filter": true,
         "windowing": true,
-        "export": false,
+        "export": true,
         "matlab": false
     },
     "extra": {
@@ -22,14 +22,14 @@
         "substract_level": 4
     },
     "actions": {
-        "position": true,
-        "position_x": false,
+        "position": false,
+        "position_x": true,
         "position_y": false,
         "position_all_on_one": true,
         "phase": false,
         "violin": false,
         "violin_chop": false,
-        "violin_all_on_one": true,
+        "violin_all_on_one": false,
         "step_length": false,
         "experimental": false
     },
@@ -58317,6 +58317,22 @@
                 "y0": 291.8430362740707,
                 "width": 80,
                 "height": 80
+            }
+        },
+        "74e05540a5fb735bab1730793b4c797eeafbc79729656808ad8b467ec80a4e6acd0bb816dee4e0f1269653e8890dd56d2788b42394244e48b8a5bd06dec115f3": {
+            "0": {
+                "number": 0,
+                "x0": 326.6893397054373,
+                "y0": 154.0703704600678,
+                "width": 40,
+                "height": 40
+            },
+            "1": {
+                "number": 1,
+                "x0": 138.96300634748997,
+                "y0": 99.42068011003971,
+                "width": 40,
+                "height": 40
             }
         }
     }
