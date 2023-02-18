@@ -20,7 +20,7 @@ class Solver(QThread):
     def __init__(self, videodata, fps, res, box_dict, start_frame, stop_frame, upsample_factor,
                  track, compare_first, filter, windowing, matlab, figure, write_target):
         QThread.__init__(self)
-        self.videodata = videodata  # store an access to the video file to iterate over the frames
+        self.videodata = videodata  # store access to the video file to iterate over the frames
         self.figure = figure  # store the figure to draw displacement arrows
 
         self.fps = fps  # frames per seconds
@@ -48,6 +48,7 @@ class Solver(QThread):
         self.col_max = []
 
         self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
+        self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
         self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
         self.shift_y = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
         self.shift_p = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
@@ -219,6 +220,7 @@ class Solver(QThread):
             print("Box %d (%d, %d, %d, %d)." % (j, self.row_min[j], self.row_max[j], self.col_min[j], self.col_max[j]))
 
             self.pixels[j][0] = pixels
+            self.mean[j][0] = np.mean(image_first)
             self.shift_x[j][0] = 0
             self.shift_y[j][0] = 0
             self.shift_p[j][0] = 0
@@ -235,7 +237,7 @@ class Solver(QThread):
         length = self.stop_frame - self.start_frame
         progress_pivot = 0 - 5
 
-        next_frame = None
+        queue = {}
         for i in range(self.start_frame + 1, self.stop_frame + 1):  # i iterates over all frames
             if not self.go_on:  # condition checked to be able to stop the thread
                 return
@@ -244,14 +246,24 @@ class Solver(QThread):
 
             offset = i - self.start_frame
 
-            if next_frame is None:
-                self.frame_n = self._prepare_image(self.videodata.get_frame(offset))
+            if i not in queue:
+                self.frame_n = self._prepare_image(self.videodata.get_frame(i))
             else:
-                self.frame_n = self._prepare_image(next_frame.result())
+                self.frame_n = self._prepare_image(queue[i].result())
 
-                if offset < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        next_frame = executor.submit(self.videodata.get_frame, offset + 1)
+            queue[i] = None
+
+            if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    queue[i + 1] = executor.submit(self.videodata.get_frame, i + 1)
+
+                    # TODO: properly implement multi-threaded reads
+                    # for r in range(i + 1, i + min(5, self.stop_frame - i + 1)):  # pool next 5 frames
+                    #     if r in queue:  # already pooled
+                    #         continue
+                    #
+                    #     # print("Pooling frame: %d." % r)
+                    #     queue[r] = executor.submit(self.videodata.get_frame, r)
 
             if self.write_target is not None:
                 colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
@@ -292,6 +304,7 @@ class Solver(QThread):
             for j in range(len(self.box_dict)):
                 image_n, pixels, shift, error, phase = results[j]
                 self.pixels[j][offset] = pixels
+                self.mean[j][offset] = np.mean(image_n)
 
                 shift[0], shift[1] = -shift[1], -shift[0]  # (-y, -x) → (x, y)
 

@@ -580,6 +580,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.saveParameters()  # only save parameters if there are plots to open
 
         self.opened_plots = utils.plot_results(pixels=self.solver.pixels,
+                                               mean=self.solver.mean,
                                                shift_x=self.solver.shift_x,
                                                shift_y=self.solver.shift_y,
                                                shift_p=self.solver.shift_p,
@@ -602,6 +603,7 @@ class Main(QMainWindow, Ui_MainWindow):
     def exportResults(self):
         if self.solver is not None:
             utils.export_results(pixels=self.solver.pixels,
+                                 mean=self.solver.mean,
                                  shift_x=self.solver.shift_x,
                                  shift_y=self.solver.shift_y,
                                  shift_p=self.solver.shift_p,
