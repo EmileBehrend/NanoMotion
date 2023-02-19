@@ -2,144 +2,144 @@ import argparse
 import hashlib
 import json
 import os
-import os.path
 import sys
 
-# Use Matplotlib 3.3.4, later versions are currently not supported
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
+import PyQt5
 import cv2
 import numpy as np
-import skimage.color
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
-
 import pims
-import utils
-from dragRectangle import DraggableRectangle
+import pyqtgraph
+import pyqtgraph as pg
+import pyqtgraph.exporters
+import skimage.color
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QFileDialog
 from PyQt5.uic import loadUiType
+
+import utils
 from solver import Solver
 
 dirname = os.path.dirname(__file__)
 
-# To keep the tips when editing, run pyuic5 mainMenu.ui -o mainMenu.py in the terminal
-Ui_MainWindow, QMainWindow = loadUiType(os.path.join(dirname, "mainMenu.ui"))
+Ui_MainWindow, QMainWindow = loadUiType(os.path.join(dirname, "main_menu.ui"))
 
 
 class Main(QMainWindow, Ui_MainWindow):
     def __init__(self, ):
         super(Main, self).__init__()
         self.setupUi(self)
-        self.figure = None
-        self.opened_plots = []
-        self.saved_boxes = {}
-        self.boxes_dict = []  # list of boxes to analyse
-        self.plots_dict = {}  # list of plots to plot
-        self.output_basepath = None
-        self.solver = None
-        self.basename = None
-        self.originalVideoLength = 0
-        self.timer = 0
 
-        self.actionOpen.triggered.connect(self.browseFiles)
-        self.actionExport_results.triggered.connect(self.exportResults)
-        self.actionSubstract.triggered.connect(self.substract)
-        self.actionSubstract.setDisabled(True)  # TODO: improve substraction
-        self.actionAdd_box.triggered.connect(self.addDraggableRectangle)
+        self.pg_widget = None
+        self.pg_view_box = None
+        self.pg_image_item = None
+
+        self.saved_rectangles = {}
+        self.rectangles = []  # list of ROIs to analyze
+        self.selected = None  # selected rectangle
+
+        self.plots_dict = {}  # list of plots to plot
+        self.opened_plots = []
+
+        self.output_basepath = None
+        self.basename = None
+
+        self.original_video_length = 0
+        self.solver = None
+
+        self.actionOpen.triggered.connect(self.browse_files)
+        self.actionExport_results.triggered.connect(self.export_results)
+        self.actionAdd_box.triggered.connect(self.add_draggable_rectangle)
 
         self.actionAdd_box = QtWidgets.QAction()
-        self.actionAdd_box.setObjectName('actionAdd_box')
+        self.actionAdd_box.setObjectName("actionAdd_box")
         self.menubar.addAction(self.actionAdd_box)
-        self.actionAdd_box.setText('Add analysis box')
-        self.actionAdd_box.triggered.connect(self.addDraggableRectangle)
+        self.actionAdd_box.setText("Add analysis box")
+        self.actionAdd_box.triggered.connect(self.add_draggable_rectangle)
         self.actionAdd_box.setShortcut("A")
 
         self.actionRemove_box = QtWidgets.QAction()
-        self.actionRemove_box.setObjectName('actionRemove_box')
+        self.actionRemove_box.setObjectName("actionRemove_box")
         self.menubar.addAction(self.actionRemove_box)
-        self.actionRemove_box.setText('Remove analysis box')
-        self.actionRemove_box.triggered.connect(self.removeDraggableRectangle)
+        self.actionRemove_box.setText("Remove analysis box")
+        self.actionRemove_box.triggered.connect(self.remove_rectangle)
         self.actionRemove_box.setShortcut("R")
 
         self.actionStart_solver = QtWidgets.QAction()
-        self.actionStart_solver.setObjectName('actionStart_solver')
+        self.actionStart_solver.setObjectName("actionStart_solver")
         self.menubar.addAction(self.actionStart_solver)
-        self.actionStart_solver.setText('Start analysis')
-        self.actionStart_solver.triggered.connect(self.startAnalysis)
+        self.actionStart_solver.setText("Start analysis")
+        self.actionStart_solver.triggered.connect(self.start_analysis)
         self.actionStart_solver.setShortcut("S")
 
         self.actionShow_results = QtWidgets.QAction()
-        self.actionShow_results.setObjectName('actionShow_results')
+        self.actionShow_results.setObjectName("actionShow_results")
         self.menubar.addAction(self.actionShow_results)
-        self.actionShow_results.setText('Show plots')
-        self.actionShow_results.triggered.connect(self.showResults)
+        self.actionShow_results.setText("Show plots")
+        self.actionShow_results.triggered.connect(self.show_results)
         self.actionShow_results.setShortcut("V")
 
         self.actionStop_solver = QtWidgets.QAction()
-        self.actionStop_solver.setObjectName('actionStop_solver')
+        self.actionStop_solver.setObjectName("actionStop_solver")
         self.menubar.addAction(self.actionStop_solver)
-        self.actionStop_solver.setText('Stop analysis')
-        self.actionStop_solver.triggered.connect(self.stopAnalysis)
+        self.actionStop_solver.setText("Stop analysis")
+        self.actionStop_solver.triggered.connect(self.stop_analysis)
 
         self.actionReset_boxes = QtWidgets.QAction()
-        self.actionReset_boxes.setObjectName('actionReset_boxes')
+        self.actionReset_boxes.setObjectName("actionReset_boxes")
         self.menubar.addAction(self.actionReset_boxes)
-        self.actionReset_boxes.setText('Reset boxes')
+        self.actionReset_boxes.setText("Reset boxes")
         self.actionReset_boxes.triggered.connect(self.reset_boxes)
 
         self.json_data = {}
 
-        self.fileName = None
+        self.file_name = None
         self.id = None
-        self.videodata = None
+        self.video_data = None
 
-        self.loadParameters()
+        self.load_parameters()
 
         if args.open is not None:
-            self.fileName = args.open
+            self.file_name = args.open
 
         self.cursor = None
 
-        self.loadAndShowFile()
+        self.load_and_show_file()
 
         if args.autostart:
-            self.startAnalysis()
+            self.start_analysis()
 
-    def startFrame(self, update=True):
-        if self.originalVideoLength != float('inf'):
-            if int(self.lineEdit_start_frame.text()) >= self.originalVideoLength:
-                self.lineEdit_start_frame.setText(str(self.originalVideoLength - 1))
+    # def start_frame(self, update=True):
+    #     print("a")
+    #     if self.original_video_length != float("inf"):
+    #         if int(self.line_start_frame.text()) >= self.original_video_length:
+    #             self.line_start_frame.setText(str(self.original_video_length - 1))
+    #
+    #         if self.file_name != "":
+    #             try:
+    #                 if update:
+    #                     self.imshow.set_data(skimage.color.rgb2gray(self.video_data.get_frame(int(self.line_start_frame.text()))))
+    #                     self.figure.canvas.draw()
+    #                     self.figure.canvas.flush_events()
+    #                 return self.video_data.get_frame(int(self.line_start_frame.text()))
+    #             except Exception:
+    #                 print("Failed to show the first frame.")
+    #                 return 0
+    #     else:
+    #         return 0
 
-            if self.fileName != "":
-                try:
-                    if update:
-                        self.imshow.set_data(skimage.color.rgb2gray(self.videodata.get_frame(int(self.lineEdit_start_frame.text()))))
-                        self.figure.canvas.draw()
-                        self.figure.canvas.flush_events()
-                    return self.videodata.get_frame(int(self.lineEdit_start_frame.text()))
-                except Exception:
-                    print("Failed to show the first frame.")
-                    return 0
-        else:
-            return 0
-
-    def stopFrame(self):
-        if self.originalVideoLength != float('inf'):
-            if int(self.lineEdit_stop_frame.text()) >= self.originalVideoLength:
-                self.lineEdit_stop_frame.setText(str(self.originalVideoLength - 1))
-
-            if self.fileName != "":
-                try:
-                    return self.videodata.get_frame(int(self.lineEdit_stop_frame.text()))
-                except Exception:
-                    print("Failed to load the last frame.")
-                    return 0
-            else:
-                return 0
+    # def stop_frame(self):
+    #     if self.original_video_length != float("inf"):
+    #         if int(self.line_stop_frame.text()) >= self.original_video_length:
+    #             self.line_stop_frame.setText(str(self.original_video_length - 1))
+    #
+    #         if self.file_name != "":
+    #             try:
+    #                 return self.video_data.get_frame(int(self.line_stop_frame.text()))
+    #             except Exception:
+    #                 print("Failed to load the last frame.")
+    #                 return 0
+    #         else:
+    #             return 0
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls:
@@ -158,61 +158,58 @@ class Main(QMainWindow, Ui_MainWindow):
 
         if e.mimeData().hasUrls:
             for url in e.mimeData().urls():
-                fname = str(url.toLocalFile())
-            self.fileName = fname
-            self.loadAndShowFile()
+                self.file_name = str(url.toLocalFile())
 
-    def mouse_event(self, e):
-        self.cursor = (e.xdata, e.ydata)
+            self.load_and_show_file()
 
-    def setPlotOptions(self):
+    def set_plot_options(self):
         for action in self.menuView_plot.actions():
             self.plots_dict[action.objectName()] = action.isChecked()
-            print("Menu option '%s' ('%s') is set to %s." %
-                  (action.objectName(), action.text(), action.isChecked()))
+            print(f"Menu option '{action.objectName()}' ('{action.text()}') is set to {action.isChecked()}.")
 
-        self.lineEdit_chop_sec.setEnabled(self.view_violin_chop.isChecked())
+        self.line_chop_sec.setEnabled(self.view_violin_chop.isChecked())
         self.label_chop_sec.setEnabled(self.view_violin_chop.isChecked())
 
-    def browseFiles(self):
-        self.fileName, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
-                                                       "All Files (*);mp4 movie (*.mp4)")
-        self.loadAndShowFile()
+    def browse_files(self):
+        self.file_name, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "", "All Files (*);mp4 movie (*.mp4)")
+        self.load_and_show_file()
 
-    def unloadFile(self):
-        self.views.clear()  # clear the image
-        self.boxes.clear()  # clear the list of boxes on the right side
+    def unload_file(self):
+        self.views.clear()  # clear the image name in the list
+        self.rectangles_list.clear()  # clear the list of boxes on the right side
 
-        for box in self.boxes_dict:  # remove the boxes
-            box.disconnect()
-        self.boxes_dict.clear()
+        for rectangle in self.rectangles:
+            self.pg_view_box.removeItem(rectangle)
+
+        self.rectangles.clear()
 
         if self.solver is not None:
             self.solver.clear_annotations()
 
         self.basename = None
 
-        self.mplvl.removeWidget(self.canvas)
-        self.canvas.close()
-        self.mplvl.removeWidget(self.toolbar)
-        self.toolbar.close()
+        self.mplvl.removeWidget(self.pg_widget)
 
-    def loadAndShowFile(self):
-        if self.fileName is None:
+    def pg_on_move(self, pos):
+        mapped = self.pg_view_box.mapSceneToView(pos)
+        self.cursor = (mapped.x(), mapped.y())
+
+    def load_and_show_file(self):
+        if self.file_name is None:
             return
 
         try:
-            if os.path.isfile(self.fileName):
-                self.videodata = pims.Video(self.fileName)
+            if os.path.isfile(self.file_name):
+                self.video_data = pims.Video(self.file_name)
 
-                with open(self.fileName, "rb") as input:
-                    self.id = hashlib.blake2b(input.read()).hexdigest()
+                with open(self.file_name, "rb") as stream:
+                    self.id = hashlib.blake2b(stream.read()).hexdigest()
             else:
-                self.videodata = pims.ImageSequence(self.fileName)
+                self.video_data = pims.ImageSequence(self.file_name)
 
-                self.id = self.fileName
+                self.id = self.file_name
         except Exception as e:
-            print("Failed to load file/folder '%s'." % (self.fileName))
+            print(f"Failed to load file/folder '{self.file_name}'.")
             print(e)
 
             if args.autostart and args.quit:  # silent quit if no file was found and automation is running
@@ -220,95 +217,68 @@ class Main(QMainWindow, Ui_MainWindow):
 
             return
 
-        print("Loaded file: '%s'." % (self.fileName))
+        print(f"Loaded file '{self.file_name}'")
         if self.id in self.json_data["boxes"]:
-            self.saved_boxes = self.json_data["boxes"][self.id]
+            self.saved_rectangles = self.json_data["boxes"][self.id]
 
             print("Loaded previously saved boxes (with blake2b hash).")
-        elif self.fileName in self.json_data["boxes"]:  # fallback to filename before giving up
-            self.saved_boxes = self.json_data["boxes"].pop(self.fileName)  # remove previous id
+        elif self.file_name in self.json_data["boxes"]:  # fallback to filename before giving up
+            self.saved_rectangles = self.json_data["boxes"].pop(self.file_name)  # remove previous id
 
-            self.json_data["boxes"][self.id] = self.saved_boxes  # set new id
+            self.json_data["boxes"][self.id] = self.saved_rectangles  # set new id
 
             print("Loaded previously saved boxes (with filename).")
         else:
-            self.saved_boxes = {}
+            self.saved_rectangles = {}
 
         try:
-            self.unloadFile()
+            self.unload_file()
         except AttributeError:
             print("Nothing to clear.")
 
-        shape = np.shape(self.videodata.get_frame(0))
+        shape = np.shape(self.video_data.get_frame(0))
         try:
-            # try to get the video length (can vary depending on the Python environment)
-            self.originalVideoLength = len(self.videodata)
+            # Try to get the video length (can vary depending on the Python environment)
+            self.original_video_length = len(self.video_data)
         except Exception:
             print("Can't get video length.")
 
-        print("Shape of videodata[0]: %s x %d frames. Object type: %s." %
-              (shape, self.originalVideoLength, type(self.videodata)))
+        print(f"Shape of `video_data[0]` object: {shape} * {self.original_video_length} frames, type: {type(self.video_data)}")
 
-        self.figure = Figure()
-        sub = self.figure.add_subplot(111)
+        self.views.addItem(self.file_name)
+
+        self.pg_view_box = pg.ViewBox()
+        self.pg_view_box.setAspectLocked()
+        self.pg_view_box.invertY()
+
+        self.pg_widget = pg.GraphicsView()
+        self.pg_widget.setCentralWidget(self.pg_view_box)
+
+        self.pg_image_item = pg.ImageItem(axisOrder="row-major")
+        self.pg_view_box.addItem(self.pg_image_item)
         try:
-            display = self.videodata.get_frame(int(self.lineEdit_start_frame.text()))
+            display = self.video_data.get_frame(int(self.line_start_frame.text()))
 
-            self.imshow = sub.imshow(skimage.color.rgb2gray(display), cmap="gray")
+            self.pg_image_item.setImage(skimage.color.rgb2gray(display))
 
-            print("Shown: %s." % (display.dtype))
+            print("Shown: %s." % display.dtype)
         except Exception as e:
             print(e)
-            self.imshow = sub.imshow(skimage.color.rgb2gray(self.videodata.get_frame(0)), cmap="gray")
+            self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
 
-        self.views.addItem(self.fileName)
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.mpl_connect('motion_notify_event', self.mouse_event)
-        self.mplvl.addWidget(self.canvas)
-        self.canvas.draw()
-        self.toolbar = NavigationToolbar(self.canvas, self, coordinates=True)
-        self.addToolBar(self.toolbar)
-        self.stopFrame()  # check new boundaries
+        self.mplvl.addWidget(self.pg_widget)
 
-        for box in self.saved_boxes.values():
-            self._addRectangle(box["number"], box["x0"], box["y0"], box["width"], box["height"])
+        self.pg_image_item.scene().sigMouseMoved.connect(self.pg_on_move)
 
-    def substract(self):
-        if self.checkBox_substract.isChecked():
-            print("Enabled substract.")
-            try:
-                start_frame = int(self.lineEdit_start_frame.text())
-                stop_frame = int(self.lineEdit_stop_frame.text())
-                n_frames = stop_frame - start_frame
-                first_frame = skimage.color.rgb2gray(self.videodata.get_frame(start_frame))
-                print(type(first_frame))
-                cumulative_frame = np.zeros(np.shape(first_frame))
-                print(type(cumulative_frame))
-                for i in range(stop_frame, start_frame, -int(n_frames / int(self.lineEdit_substract_lvl.text()))):
-                    print(i)
-                    cumulative_frame += skimage.color.rgb2gray(
-                        self.videodata.get_frame(i)) - first_frame
+        for box in self.saved_rectangles.values():
+            self.add_rectangle(box["number"], box["x0"], box["y0"], box["width"], box["height"])
 
-                self.imshow.set_data(skimage.color.rgb2gray(cumulative_frame))
-                self.imshow.set_cmap(self.comboBox_substract_col.currentText())
-                self.figure.canvas.draw()
-            except Exception:
-                print("Unable to enable substract.")
-        else:
-            try:
-                print("Disabled substract.")
-                self.startFrame()
-                self.imshow.set_cmap("gray")
-                self.figure.canvas.draw()
-            except Exception:
-                print("Unable to disable substract.")
-
-    def addDraggableRectangle(self):
+    def add_draggable_rectangle(self):
         if self.cursor is None:  # no file opened, return gracefully
             return
 
-        width = int(self.lineEdit_w.text())
-        height = int(self.lineEdit_h.text())
+        width = int(self.line_w.text())
+        height = int(self.line_h.text())
 
         if self.cursor[0] is not None and self.cursor[1] is not None:
             x0 = self.cursor[0] - width / 2
@@ -317,100 +287,105 @@ class Main(QMainWindow, Ui_MainWindow):
             x0 = width / 2 + 15
             y0 = height / 2 + 15
 
-        number = len(self.boxes_dict)
+        number = len(self.rectangles)
 
-        self._addRectangle(number, x0, y0, width, height)
+        self.add_rectangle(number, x0, y0, width, height)
 
-        self.saved_boxes[str(number)] = {
-            "number": number,
-            "x0": x0,
-            "y0": y0,
-            "width": width,
-            "height": height
-        }
+    def debug(self, object):
+        print(object)
+        object_methods = [method_name for method_name in dir(object) if callable(getattr(object, method_name))]
+        print(object_methods)
 
-    def _addRectangle(self, number, x0, y0, width, height):
-        print("Adding box %d to figure." % (number))
+    def pg_rectangle_selected(self, event):
+        print(f"Selected: {event}")
+        if self.selected is not None:
+            self.selected.setPen(pg.mkPen())  # set old selected to normal color
 
-        ax = self.figure.add_subplot(111)
+        self.selected = event
+        self.selected.setPen(pg.mkPen(color="r"))  # highlight new selected rectangle
 
-        rect = patches.Rectangle(xy=(x0, y0), width=width, height=height, linewidth=1, edgecolor='r', facecolor='b', fill=False)
-        ax.add_patch(rect)
+    def pg_rectangle_remove(self, event):
+        self.remove_rectangle(rectangle=event)
 
-        text = ax.text(x=x0, y=y0, s=str(number))
-        dr = DraggableRectangle(rect, rectangle_number=number, text=text)
-        dr.connect()
+    def add_rectangle(self, number, x0, y0, width, height):
+        print(f"Adding box {number} to figure.")
 
-        self.boxes_dict.append(dr)
-        self.boxes.addItem(str(number))
+        rectangle = pyqtgraph.RectROI((x0, y0), (width, height), scaleSnap=True, translateSnap=True, rotatable=False, removable=True)
+        rectangle.setAcceptedMouseButtons(PyQt5.QtCore.Qt.MouseButton.LeftButton)
+        # rectangle.sigRegionChangeFinished.connect(self.pg_rectangle_selected)
+        rectangle.sigClicked.connect(self.pg_rectangle_selected)
+        rectangle.sigRemoveRequested.connect(self.pg_rectangle_remove)
+        self.pg_view_box.addItem(rectangle)
 
-    def removeDraggableRectangle(self):
-        length = len(self.boxes_dict)
-        if length <= 0:  # no box present, return gracefully
+        text = pg.TextItem(str(number), color=(255, 0, 0), anchor=(0.25, 0.85))
+        text.setParentItem(rectangle)
+
+        font = pg.Qt.QtGui.QFont()
+        font.setPixelSize(20)
+
+        text.setFont(font)
+
+        self.rectangles.append(rectangle)
+        self.rectangles_list.addItem(str(number))
+
+    def remove_rectangle(self, rectangle=None):
+        if len(self.rectangles) <= 0:  # no box present, return gracefully
             return
 
-        current = self.boxes.currentRow()
-        if current == -1:  # no box selected (-1), delete the last one (length - 1)
-            current = length - 1
+        if rectangle is None or not rectangle:
+            if self.selected is None:
+                return
+            else:
+                rectangle = self.selected
 
-        print("Removing box %d from figure." % (current))
+        print(f"Rectangle: {rectangle}, selected: {self.selected}")
 
-        rectangle = self.boxes_dict[current]
-        rectangle.disconnect()
-        rectangle.text.remove()
+        number = self.rectangles.index(rectangle)
+        print(f"Removing box {number} from figure.")
 
-        self.boxes_dict.pop(current)
-        self.boxes.takeItem(current)
+        self.rectangles_list.takeItem(len(self.rectangles) - 1)
+        self.rectangles.remove(rectangle)
 
-        self.figure.axes[0].patches[current].remove()
-        self.figure.texts[current].remove()
+        self.pg_view_box.removeItem(rectangle)
 
-        self.figure.canvas.draw()
+        self.selected = None
 
-        if str(current) in self.saved_boxes:
-            self.saved_boxes.pop(str(current))
-        else:
-            print("Error - saved boxes: %s." % (self.saved_boxes))  # TODO: fix this
+        i = 0
+        for r in self.rectangles:
+            for child in r.allChildItems():
+                if isinstance(child, pg.TextItem):
+                    print(f"Type: {type(child)}")
+                    child.setText(str(i))
 
-    def loadParameters(self):
+            i += 1
+
+    def load_parameters(self):
         with open(os.path.join(dirname, "settings.json"), "r") as json_file:
             self.json_data = json.load(json_file)
 
             if "last_file" in self.json_data:
-                self.fileName = self.json_data["last_file"]
+                self.file_name = self.json_data["last_file"]
 
-            self.lineEdit_pix_size.setText(str(self.json_data["parameters"]["pixel_size"]))
-            self.lineEdit_magn.setText(str(self.json_data["parameters"]["magnification"]))
-            self.lineEdit_sub_pix.setText(str(self.json_data["parameters"]["sub_pixel"]))
-            self.lineEdit_fps.setText(str(self.json_data["parameters"]["fps"]))
-            self.lineEdit_start_frame.setText(str(self.json_data["parameters"]["start_frame"]))
-            self.lineEdit_stop_frame.setText(str(self.json_data["parameters"]["stop_frame"]))
-            self.lineEdit_w.setText(str(self.json_data["parameters"]["box_width"]))
-            self.lineEdit_h.setText(str(self.json_data["parameters"]["box_height"]))
-            self.lineEdit_chop_sec.setText(str(self.json_data["parameters"]["chop_sec"]))
+            self.line_pix_size.setText(str(self.json_data["parameters"]["pixel_size"]))
+            self.line_magn.setText(str(self.json_data["parameters"]["magnification"]))
+            self.line_sub_pix.setText(str(self.json_data["parameters"]["sub_pixel"]))
+            self.line_fps.setText(str(self.json_data["parameters"]["fps"]))
+            self.line_start_frame.setText(str(self.json_data["parameters"]["start_frame"]))
+            self.line_stop_frame.setText(str(self.json_data["parameters"]["stop_frame"]))
+            self.line_w.setText(str(self.json_data["parameters"]["box_width"]))
+            self.line_h.setText(str(self.json_data["parameters"]["box_height"]))
+            self.line_chop_sec.setText(str(self.json_data["parameters"]["chop_sec"]))
             self.checkBox_track.setChecked(self.json_data["parameters"]["tracking"])
-            self.checkBox_compare_first.setChecked(
-                self.json_data["parameters"]["compare_to_first"])
+            self.checkBox_compare_first.setChecked(self.json_data["parameters"]["compare_to_first"])
             self.checkBox_filter.setChecked(self.json_data["parameters"]["filter"])
             self.checkBox_windowing.setChecked(self.json_data["parameters"]["windowing"])
             self.checkBox_export.setChecked(self.json_data["parameters"]["export"])
             self.checkBox_matlab.setChecked(self.json_data["parameters"]["matlab"])
 
-            self.comboBox_substract_col.setCurrentText(self.json_data["extra"]["substract_type"])
-            for i in plt.colormaps():
-                self.comboBox_substract_col.addItem(i)
-
-            self.lineEdit_substract_lvl.setText(str(self.json_data["extra"]["substract_level"]))
-
-            self.comboBox_substract_col.currentIndexChanged.connect(self.substract)
-            self.checkBox_substract.stateChanged.connect(self.substract)
-            self.lineEdit_substract_lvl.editingFinished.connect(self.substract)
-
             self.view_position.setChecked(self.json_data["actions"]["position"])
             self.view_position_x.setChecked(self.json_data["actions"]["position_x"])
             self.view_position_y.setChecked(self.json_data["actions"]["position_y"])
-            self.view_position_all_on_one.setChecked(
-                self.json_data["actions"]["position_all_on_one"])
+            self.view_position_all_on_one.setChecked(self.json_data["actions"]["position_all_on_one"])
             self.view_phase.setChecked(self.json_data["actions"]["phase"])
             self.view_violin.setChecked(self.json_data["actions"]["violin"])
             self.view_violin_chop.setChecked(self.json_data["actions"]["violin_chop"])
@@ -420,39 +395,41 @@ class Main(QMainWindow, Ui_MainWindow):
 
             print("Parameters loaded.")
 
-    def saveParameters(self):
-        # Ensure moved boxes are saved with the updated coordinates
-        j = 0
-        for key in self.saved_boxes.keys():
-            self.saved_boxes[key]["x0"] = self.boxes_dict[j].x_rect
-            self.saved_boxes[key]["y0"] = self.boxes_dict[j].y_rect
+    def save_parameters(self):
+        self.saved_rectangles = {}  # Ensure moved boxes are saved with the updated coordinates
 
-            j += 1
+        i = 0
+        for rectangle in self.rectangles:
+            self.saved_rectangles[str(i)] = {
+                "number": i,
+                "x0": rectangle.pos()[0],
+                "y0": rectangle.pos()[1],
+                "width": rectangle.size()[0],
+                "height": rectangle.size()[1]
+            }
 
-        self.json_data["boxes"][self.id] = self.saved_boxes
+            i += 1
+
+        self.json_data["boxes"][self.id] = self.saved_rectangles
 
         self.json_data = {
-            "last_file": self.fileName,
+            "last_file": self.file_name,
             "parameters": {
-                "pixel_size": float(self.lineEdit_pix_size.text()),
-                "magnification": int(self.lineEdit_magn.text()),
-                "sub_pixel": int(self.lineEdit_sub_pix.text()),
-                "fps": int(self.lineEdit_fps.text()),
-                "start_frame": int(self.lineEdit_start_frame.text()),
-                "stop_frame": int(self.lineEdit_stop_frame.text()),
-                "box_width": int(self.lineEdit_w.text()),
-                "box_height": int(self.lineEdit_h.text()),
-                "chop_sec": int(self.lineEdit_chop_sec.text()),
+                "pixel_size": float(self.line_pix_size.text()),
+                "magnification": int(self.line_magn.text()),
+                "sub_pixel": int(self.line_sub_pix.text()),
+                "fps": int(self.line_fps.text()),
+                "start_frame": int(self.line_start_frame.text()),
+                "stop_frame": int(self.line_stop_frame.text()),
+                "box_width": int(self.line_w.text()),
+                "box_height": int(self.line_h.text()),
+                "chop_sec": int(self.line_chop_sec.text()),
                 "tracking": self.checkBox_track.isChecked(),
                 "compare_to_first": self.checkBox_compare_first.isChecked(),
                 "filter": self.checkBox_filter.isChecked(),
                 "windowing": self.checkBox_windowing.isChecked(),
                 "export": self.checkBox_export.isChecked(),
                 "matlab": self.checkBox_matlab.isChecked()
-            },
-            "extra": {
-                "substract_type": self.comboBox_substract_col.currentText(),
-                "substract_level": int(self.lineEdit_substract_lvl.text())
             },
             "actions": {
                 "position": self.view_position.isChecked(),
@@ -474,110 +451,107 @@ class Main(QMainWindow, Ui_MainWindow):
 
             print("Parameters saved.")
 
-    def startAnalysis(self):
-        self.stopAnalysis()  # ensure no analysis is already running
+    def start_analysis(self):
+        self.stop_analysis()  # ensure no analysis is already running
         # TODO: return if an analysis is already running instead of restarting a new analysis
 
-        if self.videodata is None:  # no video loaded, return gracefully
+        if self.video_data is None:  # no video loaded, return gracefully
             return
 
         if self.solver is not None:  # remove the arrows
             self.solver.clear_annotations()
 
-        self.setPlotOptions()
-        self.saveParameters()
+        self.set_plot_options()
+        self.save_parameters()
 
-        self.output_basepath = utils.ensure_directory(self.fileName, "results")
+        self.output_basepath = utils.ensure_directory(self.file_name, "results")
 
         if self.checkBox_export.isChecked():
-            write_target = utils.ensure_directory(self.fileName, "exports")
+            write_target = utils.ensure_directory(self.file_name, "exports")
         else:
             write_target = None
 
         print("Tracking: %s." % (self.checkBox_track.isChecked()))
-        self.solver = Solver(videodata=self.videodata,
-                             fps=float(self.lineEdit_fps.text()),
-                             box_dict=self.boxes_dict,
-                             upsample_factor=int(self.lineEdit_sub_pix.text()),
-                             stop_frame=int(self.lineEdit_stop_frame.text()),
-                             start_frame=int(self.lineEdit_start_frame.text()),
-                             res=float(self.lineEdit_pix_size.text()),
+        self.solver = Solver(video_data=self.video_data,
+                             fps=float(self.line_fps.text()),
+                             rectangles=self.rectangles,
+                             upsample_factor=int(self.line_sub_pix.text()),
+                             stop_frame=int(self.line_stop_frame.text()),
+                             start_frame=int(self.line_start_frame.text()),
+                             res=float(self.line_pix_size.text()),
                              track=self.checkBox_track.isChecked(),
                              compare_first=self.checkBox_compare_first.isChecked(),
                              filter=self.checkBox_filter.isChecked(),
                              windowing=self.checkBox_windowing.isChecked(),
                              matlab=self.checkBox_matlab.isChecked(),
-                             figure=self.figure,
                              write_target=write_target
                              )
 
-        self.figure.savefig("%s_overview.png" % (self.output_basepath))
+        pg.exporters.ImageExporter(self.pg_image_item.scene()).export(f"{self.output_basepath}_overview.png")
 
-        combined = skimage.color.gray2rgb(self.videodata.get_frame(int(self.lineEdit_start_frame.text())))
-        for box in self.boxes_dict:
-            rect = box.rect
-
-            top_left = (int(rect.get_x()), int(rect.get_y() + rect.get_height()))
-            bottom_right = (int(rect.get_x() + rect.get_width()), int(rect.get_y()))
+        combined = skimage.color.gray2rgb(self.video_data.get_frame(int(self.line_start_frame.text())))
+        for rectangle in self.rectangles:
+            position = rectangle.pos()
+            top_left = (int(position.x()), int(position.y() + rectangle.size()[1]))
+            bottom_right = (int(position.x() + rectangle.size()[0]), int(position.y()))
 
             combined = cv2.rectangle(combined, top_left, bottom_right, (255, 0, 0), 1)
 
-        skimage.io.imsave("%s_raw.png" % (self.output_basepath), combined)
+        skimage.io.imsave(f"{self.output_basepath}_raw.png", combined)
 
-        self.solver.progressChanged.connect(self.updateProgress)
+        self.solver.progress_signal.connect(self.update_progress)
+        self.solver.arrow_signal.connect(self.update_arrow)
+        self.solver.rectangle_signal.connect(self.update_rectangle)
         self.solver.start()
 
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.updateProgress)
-        self.timer.start(100)
-        print("Started timer.")
-
-    def stopAnalysis(self):
+    def stop_analysis(self):
         print("Analysis stopped.")
 
-        try:
-            self.timer.stop()
-
-            if self.solver is not None:
-                self.solver.stop()
-        except Exception:  # no timer or solver launched, return gracefully
-            pass
-
-    def updateProgress(self):
         if self.solver is not None:
-            if self.solver.progress == 100:
-                self.timer.stop()
+            self.solver.stop()
 
-            current_frame = self.solver.current_i - int(self.lineEdit_start_frame.text())
-            last_frame = int(self.lineEdit_stop_frame.text()) - int(self.lineEdit_start_frame.text())
+    def update_progress(self, progress, current_i, frame_n):
+        if self.solver is not None:
+            current_frame = current_i - int(self.line_start_frame.text())
+            last_frame = int(self.line_stop_frame.text()) - int(self.line_start_frame.text())
 
-            for j in range(len(self.boxes_dict)):
-                item = self.boxes.item(j)
-                item.setText("%d - %d%% (frame %d/%d)" % (j, self.solver.progress, current_frame, last_frame))
+            for j in range(len(self.rectangles)):
+                item = self.rectangles_list.item(j)
+                item.setText(f"{j} - {self.solver.progress}% (frame {current_frame}/{last_frame})")
 
-            if self.solver.progress == 100 or (self.checkBox_live_preview.isChecked() and current_frame > 0):
-                self.imshow.set_data(self.solver.frame_n)
-                for r in self.boxes_dict:
-                    r.update_from_solver()
-                self.figure.canvas.draw()
-                self.figure.canvas.flush_events()
+            if progress == 100 or current_frame > 0:
+                self.pg_image_item.setImage(frame_n)
 
-                if self.solver.progress == 100:
-                    if args.show_results:
-                        self.showResults()
+            if progress == 100:
+                if args.show_results:
+                    self.show_results()
 
-                    if args.export_results:
-                        self.exportResults()
+                if args.export_results:
+                    self.export_results()
 
-                    if args.quit:
-                        app.quit()
+                if args.quit:
+                    app.quit()
 
-    def showResults(self):
+    def update_arrow(self, parameters):
+        arrow = parameters["arrow"]
+        if arrow is not None:
+            arrow.setStyle(angle=parameters["angle"], headLen=parameters["headLen"], tailLen=parameters["tailLen"])
+            arrow.setPos(*parameters["pos"])
+        else:
+            arrow = pg.ArrowItem(parent=parameters["parent"], pos=parameters["pos"], angle=parameters["angle"], headLen=parameters["headLen"],
+                                 tailLen=parameters["tailLen"])
+
+            self.solver.set_arrow(parameters["j"], arrow)
+
+    def update_rectangle(self, j, pos_x, pos_y):
+        self.rectangles[j].setPos(pos_x, pos_y)
+
+    def show_results(self):
         if self.solver is None or self.solver.progress < 100:
             return
 
-        self.setPlotOptions()
-        self.saveParameters()  # only save parameters if there are plots to open
+        self.set_plot_options()
+        self.save_parameters()  # only save parameters if there are plots to open
 
         self.opened_plots = utils.plot_results(pixels=self.solver.pixels,
                                                mean=self.solver.mean,
@@ -588,19 +562,19 @@ class Main(QMainWindow, Ui_MainWindow):
                                                box_shift=self.solver.box_shift,
                                                fps=self.solver.fps,
                                                res=self.solver.res,
-                                               input_path=self.fileName,
+                                               input_path=self.file_name,
                                                output_basepath=self.output_basepath,
                                                plots_dict=self.plots_dict,
-                                               boxes_dict=self.boxes_dict,
-                                               chop_duration=float(self.lineEdit_chop_sec.text()),
+                                               rectangles=self.rectangles,
+                                               chop_duration=float(self.line_chop_sec.text()),
                                                start_frame=self.solver.start_frame)
 
         print("%d plots shown." % (len(self.opened_plots)))
 
     def reset_boxes(self):
-        self.loadAndShowFile()  # reloading the file resets everything
+        self.load_and_show_file()  # reloading the file resets everything
 
-    def exportResults(self):
+    def export_results(self):
         if self.solver is not None:
             utils.export_results(pixels=self.solver.pixels,
                                  mean=self.solver.mean,
@@ -612,23 +586,21 @@ class Main(QMainWindow, Ui_MainWindow):
                                  fps=self.solver.fps,
                                  res=self.solver.res,
                                  output_basepath=self.output_basepath,
-                                 boxes_dict=self.boxes_dict,
+                                 rectangles=self.rectangles,
                                  start_frame=self.solver.start_frame)
 
         print("Files exported.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Python interpreter: %s, version: %s." % (os.path.dirname(sys.executable), sys.version))
     sys.stdout.flush()
 
     parser = argparse.ArgumentParser(description="Nanomotion software.")
     parser.add_argument("-o", "--open", help="File to open.", default=None)
     parser.add_argument("-a", "--autostart", help="Start the analysis.", action="store_true")
-    parser.add_argument("-r", "--show_results",
-                        help="Show the results after the analysis.", action="store_true")
-    parser.add_argument("-x", "--export_results",
-                        help="Export  the results after the analysis.", action="store_true")
+    parser.add_argument("-r", "--show_results", help="Show the results after the analysis.", action="store_true")
+    parser.add_argument("-x", "--export_results", help="Export  the results after the analysis.", action="store_true")
     parser.add_argument("-q", "--quit", help="Quit after the analysis.", action="store_true")
 
     args = parser.parse_args()

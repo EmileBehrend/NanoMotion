@@ -1,27 +1,31 @@
 import concurrent.futures
 import io
+import math
 import os
 
 import cv2
+import matplotlib
+import matplotlib.patches
 import numpy as np
+import pyqtgraph as pg
 import scipy as sp
 import skimage.color
 import skimage.filters
 import skimage.registration
-
-import matplotlib
-import matplotlib.patches
+import threading
 from PyQt5.QtCore import QThread, pyqtSignal
 
 
 class Solver(QThread):
-    progressChanged = pyqtSignal(int, int, object)
+    progress_signal = pyqtSignal(int, int, object)
+    arrow_signal = pyqtSignal(object)
+    rectangle_signal = pyqtSignal(int, int, int)
+    mutex = threading.Lock()
 
-    def __init__(self, videodata, fps, res, box_dict, start_frame, stop_frame, upsample_factor,
-                 track, compare_first, filter, windowing, matlab, figure, write_target):
+    def __init__(self, video_data, fps, res, rectangles, start_frame, stop_frame, upsample_factor, track, compare_first, filter, windowing, matlab,
+                 write_target):
         QThread.__init__(self)
-        self.videodata = videodata  # store access to the video file to iterate over the frames
-        self.figure = figure  # store the figure to draw displacement arrows
+        self.video_data = video_data  # store access to the video file to iterate over the frames
 
         self.fps = fps  # frames per seconds
         self.res = res  # size of one pixel (um / pixel)
@@ -35,26 +39,28 @@ class Solver(QThread):
 
         self.start_frame = start_frame
         self.stop_frame = stop_frame
-        self.box_dict = box_dict
+        self.rectangles = rectangles
 
-        self.centers_dict = [None for _ in self.box_dict]
-        self.arrows_dict = [None for _ in self.box_dict]
+        self.centers = [None for _ in self.rectangles]
 
-        self.go_on = True
+        with self.mutex:
+            self.arrows = [None for _ in self.rectangles]
+
+            self.go_on = True
 
         self.row_min = []
         self.row_max = []
         self.col_min = []
         self.col_max = []
 
-        self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.shift_y = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.shift_p = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.shift_x_y_error = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.box_shift = [[[0, 0] for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.box_dict]
-        self.cumulated_shift = [[0, 0] for _ in self.box_dict]
+        self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.shift_y = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.shift_p = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.shift_x_y_error = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.box_shift = [[[0, 0] for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
+        self.cumulated_shift = [[0, 0] for _ in self.rectangles]
 
         self.frame_n = None
         self.progress = 0
@@ -63,6 +69,10 @@ class Solver(QThread):
         self.write_target = write_target
 
         self.debug_frames = []
+
+    def set_arrow(self, j, arrow):
+        with self.mutex:
+            self.arrows[j] = arrow
 
     def run(self):
         try:
@@ -80,34 +90,51 @@ class Solver(QThread):
             self.matlab_engine.quit()
 
     def stop(self):
-        self.go_on = False
+        with self.mutex:
+            self.go_on = False
         print("Solver thread has been flagged to stop.")
 
     def clear_annotations(self):
-        self.centers_dict.clear()
+        self.centers.clear()
 
-        for arrow in self.arrows_dict:
-            if arrow is not None:
-                # arrow.remove()
-                self.figure.axes[0].patches.remove(arrow)
+        with self.mutex:
+            for arrow in self.arrows:
+                arrow.setParentItem(None)
 
-        self.arrows_dict.clear()
-
-        self.figure.canvas.draw()
+            self.arrows.clear()
 
     def _close_to_zero(self, value):
         return int(value)  # integer casting truncates the number (1.2 -> 1, -1.2 -> -1)
 
-    def _draw_arrow(self, j, dx, dy):
-        ax = self.figure.add_subplot(111)
+    def debug(self, object):
+        print(object)
+        object_methods = [method_name for method_name in dir(object) if callable(getattr(object, method_name))]
+        print(object_methods)
 
-        current = self.arrows_dict[j]
-        if current is not None:
-            current.remove()
+    def _draw_arrow(self, j, i, dx, dy):
+        hypotenuse = np.sqrt(dx ** 2 + dy ** 2)
 
-        arrow = matplotlib.patches.FancyArrow(self.centers_dict[j][0], self.centers_dict[j][1], dx, dy, width=2, head_length=1, head_width=4)
+        angle = math.degrees(math.acos(dx / hypotenuse))
 
-        self.arrows_dict[j] = ax.add_patch(arrow)
+        # print(f"Hypotenuse: {hypotenuse}, angle: {angle}")
+        tail_length = hypotenuse * 100  # TODO: customize this
+        head_length = 1
+
+        width, height = self.rectangles[j].size()
+        starting_pos = (width / 2 - self.box_shift[j][i][0], height / 2 - self.box_shift[j][i][1])
+
+        with self.mutex:
+            parameters = {
+                "j": j,
+                "arrow": self.arrows[j],
+                "parent": self.rectangles[j],
+                "pos": starting_pos,
+                "angle": angle,
+                "headLen": head_length,
+                "tailLen": tail_length
+            }
+
+            self.arrow_signal.emit(parameters)
 
     def _prepare_image(self, image):
         image = skimage.color.rgb2gray(image)
@@ -207,13 +234,14 @@ class Solver(QThread):
         return colored_frame_n
 
     def _compute_phase_corr(self):  # compute the cross-correlation for all frames for the selected polygon crop
-        print("self.go_on is set to %s." % (self.go_on))
+        with self.mutex:
+            print(f"self.go_on is set to {self.go_on}.")
 
         images = []  # last image subimages array
 
-        frame_first = self._prepare_image(self.videodata.get_frame(0))  # store the first subimages for later comparison
+        frame_first = self._prepare_image(self.video_data.get_frame(self.start_frame))  # store the starting subimages for later comparison
 
-        for j in range(len(self.box_dict)):  # j iterates over all boxes
+        for j in range(len(self.rectangles)):  # j iterates over all boxes
             image_first, pixels = self._filter_image_subset(self._get_image_subset(frame_first, j))
             images.append(image_first)
 
@@ -227,27 +255,30 @@ class Solver(QThread):
             self.shift_x_y_error[j][0] = 0
             self.box_shift[j][0] = [0, 0]
 
-            self.centers_dict[j] = [
-                int(self.box_dict[j].x_rect) + self.box_dict[j].rect._width / 2,
-                int(self.box_dict[j].y_rect) + self.box_dict[j].rect._height / 2
+            pos = self.rectangles[j].pos()
+            width, height = self.rectangles[j].size()
+            self.centers[j] = [
+                pos.x() + width / 2,
+                pos.y() + height / 2
             ]
 
-            self._draw_arrow(j, 0, 0)
+            self._draw_arrow(j, 0, 0, 0)
 
         length = self.stop_frame - self.start_frame
         progress_pivot = 0 - 5
 
         queue = {}
         for i in range(self.start_frame + 1, self.stop_frame + 1):  # i iterates over all frames
-            if not self.go_on:  # condition checked to be able to stop the thread
-                return
+            with self.mutex:
+                if not self.go_on:  # condition checked to be able to stop the thread
+                    return
 
             self.current_i = i
 
             offset = i - self.start_frame
 
             if i not in queue:
-                self.frame_n = self._prepare_image(self.videodata.get_frame(i))
+                self.frame_n = self._prepare_image(self.video_data.get_frame(i))
             else:
                 self.frame_n = self._prepare_image(queue[i].result())
 
@@ -255,7 +286,7 @@ class Solver(QThread):
 
             if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    queue[i + 1] = executor.submit(self.videodata.get_frame, i + 1)
+                    queue[i + 1] = executor.submit(self.video_data.get_frame, i + 1)
 
                     # TODO: properly implement multi-threaded reads
                     # for r in range(i + 1, i + min(5, self.stop_frame - i + 1)):  # pool next 5 frames
@@ -268,8 +299,8 @@ class Solver(QThread):
             if self.write_target is not None:
                 colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
 
-            parameters = [None for _ in range(len(self.box_dict))]
-            for j in range(len(self.box_dict)):  # j iterates over all boxes
+            parameters = [None for _ in range(len(self.rectangles))]
+            for j in range(len(self.rectangles)):  # j iterates over all boxes
                 # Propagate previous box shifts
                 self.box_shift[j][offset][0] = self.box_shift[j][offset - 1][0]
                 self.box_shift[j][offset][1] = self.box_shift[j][offset - 1][1]
@@ -293,15 +324,15 @@ class Solver(QThread):
 
                     print("Box %d - shifted at frame %d (~%ds)." % (j, i, i / self.fps))
 
-                    self.box_dict[j].x_rect += to_shift[0]
-                    self.box_dict[j].y_rect += to_shift[1]
+                    pos = self.rectangles[j].pos()
+                    self.rectangle_signal.emit(pos.x() + to_shift[0], pos.y() + to_shift[0])
                     self._crop_coord(j)
 
                 parameters[j] = [images[j], self._get_image_subset(self.frame_n, j), self.upsample_factor]
 
             results = self._run_threading(parameters)
 
-            for j in range(len(self.box_dict)):
+            for j in range(len(self.rectangles)):
                 image_n, pixels, shift, error, phase = results[j]
                 self.pixels[j][offset] = pixels
                 self.mean[j][offset] = np.mean(image_n)
@@ -350,7 +381,7 @@ class Solver(QThread):
                 # TODO: phase difference
                 # TODO: take into account rotation (https://scikit-image.org/docs/stable/auto_examples/registration/plot_register_rotation.html).
 
-                self._draw_arrow(j, self.shift_x[j][offset] + self.box_shift[j][offset][0], self.shift_y[j][offset] + self.box_shift[j][offset][1])
+                self._draw_arrow(j, offset, self.shift_x[j][offset] + self.box_shift[j][offset][0], self.shift_y[j][offset] + self.box_shift[j][offset][1])
 
                 # if j == 1:
                 #     print("Box %d - raw shift: (%f, %f), relative shift: (%f, %f), cumulated shift: (%f, %f), error: %f."
@@ -374,7 +405,7 @@ class Solver(QThread):
                     if self.compare_first:
                         cv2.imwrite("./debug/box_%d-0.png" % (j), images[j])
 
-                        previous = self.videodata.get_frame(i - 1)[self.row_min[j]:self.row_max[j], self.col_min[j]:self.col_max[j]]
+                        previous = self.video_data.get_frame(i - 1)[self.row_min[j]:self.row_max[j], self.col_min[j]:self.col_max[j]]
                         cv2.imwrite(("./debug/box_%d-%d_p.png" % (j, i - 1)), previous)
                     else:
                         cv2.imwrite(("./debug/box_%d-%d_p.png" % (j, i - 1)), images[j])
@@ -390,30 +421,30 @@ class Solver(QThread):
                 print("%d%% (frame: %d/%d, real frame: %d)." % (self.progress, offset, self.stop_frame - self.start_frame, i))
                 progress_pivot = self.progress
 
+            self.progress_signal.emit(self.progress, self.current_i, self.frame_n)
+
         # Post-process data (invert y-dimension)
-        for j in range(len(self.box_dict)):
+        for j in range(len(self.rectangles)):
             inverted_shift_y = [-shift_y for shift_y in self.shift_y[j]]
             self.shift_y[j] = inverted_shift_y
 
             inverted_box_shift = [[entry[0], -entry[1]] for entry in self.box_shift[j]]
             self.box_shift[j] = inverted_box_shift
 
-    def _crop_coord(self, which=-1):
-        if which == -1:
+    def _crop_coord(self, target=None):
+        if target is None:
             self.row_min.clear()
             self.row_max.clear()
             self.col_min.clear()
             self.col_max.clear()
 
-            for i in range(len(self.box_dict)):
-                self.row_min.append(int(self.box_dict[i].y_rect))
-                self.row_max.append(int(self.box_dict[i].y_rect) + self.box_dict[i].rect._height)
-                self.col_min.append(int(self.box_dict[i].x_rect))
-                self.col_max.append(int(self.box_dict[i].x_rect) + self.box_dict[i].rect._width)
+            for i in range(len(self.rectangles)):
+                self._crop_coord(target=i)
         else:
-            i = which
+            pos = self.rectangles[target].pos()
+            width, height = self.rectangles[target].size()
 
-            self.row_min[i] = int(self.box_dict[i].y_rect)
-            self.row_max[i] = int(self.box_dict[i].y_rect) + self.box_dict[i].rect._height
-            self.col_min[i] = int(self.box_dict[i].x_rect)
-            self.col_max[i] = int(self.box_dict[i].x_rect) + self.box_dict[i].rect._width
+            self.row_min.append(int(pos.y()))
+            self.row_max.append(int(pos.y() + height))
+            self.col_min.append(int(pos.x()))
+            self.col_max.append(int(pos.x() + width))

@@ -1,0 +1,709 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+    <class>MainWindow</class>
+    <widget class="QMainWindow" name="MainWindow">
+        <property name="geometry">
+            <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>1440</width>
+                <height>1010</height>
+            </rect>
+        </property>
+        <property name="acceptDrops">
+            <bool>true</bool>
+        </property>
+        <property name="windowTitle">
+            <string>Nanomotion analysis software</string>
+        </property>
+        <widget class="QWidget" name="centralwidget">
+            <layout class="QHBoxLayout" name="horizontalLayout">
+                <item>
+                    <widget class="QWidget" name="mplwindow" native="true">
+                        <property name="sizePolicy">
+                            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                            </sizepolicy>
+                        </property>
+                        <property name="acceptDrops">
+                            <bool>true</bool>
+                        </property>
+                        <layout class="QVBoxLayout" name="mplvl"/>
+                    </widget>
+                </item>
+                <item>
+                    <layout class="QVBoxLayout" name="verticalLayout">
+                        <item>
+                            <layout class="QFormLayout" name="formLayout">
+                                <item row="1" column="0">
+                                    <widget class="QLabel" name="label_pix_size">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Pixel size (μm)</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="1" column="1">
+                                    <widget class="QLineEdit" name="line_pix_size">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="toolTip">
+                                            <string>Sensor pixel size</string>
+                                        </property>
+                                        <property name="text">
+                                            <string>1.12</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="2" column="0">
+                                    <widget class="QLabel" name="label_magn">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Magnification</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="2" column="1">
+                                    <widget class="QLineEdit" name="line_magn">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="toolTip">
+                                            <string>Enlarging factor</string>
+                                        </property>
+                                        <property name="text">
+                                            <string>1</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="3" column="0">
+                                    <widget class="QLabel" name="label_sub_pix">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Sub-pixel level</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="3" column="1">
+                                    <widget class="QLineEdit" name="line_sub_pix">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="toolTip">
+                                            <string>100 is usually good</string>
+                                        </property>
+                                        <property name="inputMask">
+                                            <string extracomment="100 is usually good"/>
+                                        </property>
+                                        <property name="text">
+                                            <string>100</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="4" column="0">
+                                    <widget class="QLabel" name="label_fps">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Frames per second</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="4" column="1">
+                                    <widget class="QLineEdit" name="line_fps">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="text">
+                                            <string>25</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="5" column="0">
+                                    <widget class="QLabel" name="label_start_frame">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>First frame</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="5" column="1">
+                                    <widget class="QLineEdit" name="line_start_frame">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="text">
+                                            <string>0</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="6" column="0">
+                                    <widget class="QLabel" name="label_stop_frame">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Last frame</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="6" column="1">
+                                    <widget class="QLineEdit" name="line_stop_frame">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="text">
+                                            <string>199</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="7" column="0">
+                                    <widget class="QLabel" name="label_w">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Box width</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="7" column="1">
+                                    <widget class="QLineEdit" name="line_w">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="text">
+                                            <string>40</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="8" column="0">
+                                    <widget class="QLabel" name="label_h">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>170</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="text">
+                                            <string>Box height</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="8" column="1">
+                                    <widget class="QLineEdit" name="line_h">
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="focusPolicy">
+                                            <enum>Qt::ClickFocus</enum>
+                                        </property>
+                                        <property name="text">
+                                            <string>40</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="11" column="1">
+                                    <widget class="QLineEdit" name="line_chop_sec">
+                                        <property name="enabled">
+                                            <bool>false</bool>
+                                        </property>
+                                        <property name="sizePolicy">
+                                            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+                                                <horstretch>0</horstretch>
+                                                <verstretch>0</verstretch>
+                                            </sizepolicy>
+                                        </property>
+                                        <property name="maximumSize">
+                                            <size>
+                                                <width>70</width>
+                                                <height>16777215</height>
+                                            </size>
+                                        </property>
+                                        <property name="toolTip">
+                                            <string>Numbers of second of every slice</string>
+                                        </property>
+                                        <property name="statusTip">
+                                            <string/>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="11" column="0">
+                                    <widget class="QLabel" name="label_chop_sec">
+                                        <property name="enabled">
+                                            <bool>false</bool>
+                                        </property>
+                                        <property name="text">
+                                            <string>Chop duration seconds</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="12" column="0">
+                                    <widget class="QCheckBox" name="checkBox_track">
+                                        <property name="text">
+                                            <string>Track particle</string>
+                                        </property>
+                                        <property name="checked">
+                                            <bool>true</bool>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="13" column="0">
+                                    <widget class="QCheckBox" name="checkBox_compare_first">
+                                        <property name="text">
+                                            <string>Compare to first image</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="15" column="0">
+                                    <widget class="QCheckBox" name="checkBox_filter">
+                                        <property name="text">
+                                            <string>Filter images</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="16" column="0">
+                                    <widget class="QCheckBox" name="checkBox_windowing">
+                                        <property name="text">
+                                            <string>Window images</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="17" column="0">
+                                    <widget class="QCheckBox" name="checkBox_export">
+                                        <property name="text">
+                                            <string>Export images</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                                <item row="18" column="0">
+                                    <widget class="QCheckBox" name="checkBox_matlab">
+                                        <property name="text">
+                                            <string>Use Matlab for registration</string>
+                                        </property>
+                                    </widget>
+                                </item>
+                            </layout>
+                        </item>
+                        <item>
+                            <widget class="QListWidget" name="views">
+                                <property name="sizePolicy">
+                                    <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                                        <horstretch>0</horstretch>
+                                        <verstretch>0</verstretch>
+                                    </sizepolicy>
+                                </property>
+                                <property name="maximumSize">
+                                    <size>
+                                        <width>290</width>
+                                        <height>16777215</height>
+                                    </size>
+                                </property>
+                            </widget>
+                        </item>
+                        <item>
+                            <widget class="QListWidget" name="rectangles_list">
+                                <property name="sizePolicy">
+                                    <sizepolicy hsizetype="Maximum" vsizetype="Expanding">
+                                        <horstretch>0</horstretch>
+                                        <verstretch>0</verstretch>
+                                    </sizepolicy>
+                                </property>
+                                <property name="maximumSize">
+                                    <size>
+                                        <width>290</width>
+                                        <height>16777215</height>
+                                    </size>
+                                </property>
+                            </widget>
+                        </item>
+                    </layout>
+                </item>
+            </layout>
+        </widget>
+        <widget class="QMenuBar" name="menubar">
+            <property name="geometry">
+                <rect>
+                    <x>0</x>
+                    <y>0</y>
+                    <width>1121</width>
+                    <height>21</height>
+                </rect>
+            </property>
+            <widget class="QMenu" name="menuFile">
+                <property name="title">
+                    <string>File</string>
+                </property>
+                <addaction name="actionOpen"/>
+                <addaction name="actionExport_results"/>
+            </widget>
+            <widget class="QMenu" name="menuView">
+                <property name="title">
+                    <string>View</string>
+                </property>
+                <widget class="QMenu" name="menuView_plot">
+                    <property name="title">
+                        <string>View plot</string>
+                    </property>
+                    <addaction name="view_position"/>
+                    <addaction name="view_position_x"/>
+                    <addaction name="view_position_y"/>
+                    <addaction name="view_position_all_on_one"/>
+                    <addaction name="view_violin"/>
+                    <addaction name="view_violin_chop"/>
+                    <addaction name="view_violin_all_on_one"/>
+                    <addaction name="view_phase"/>
+                    <addaction name="view_step_length"/>
+                    <addaction name="view_experimental"/>
+                </widget>
+                <addaction name="menuView_plot"/>
+            </widget>
+            <addaction name="menuFile"/>
+            <addaction name="menuView"/>
+        </widget>
+        <widget class="QStatusBar" name="statusbar"/>
+        <action name="actionOpen">
+            <property name="text">
+                <string>Open</string>
+            </property>
+            <property name="statusTip">
+                <string>Open a file supported by PIMS (http://soft-matter.github.io/pims)</string>
+            </property>
+            <property name="shortcut">
+                <string>Ctrl+O</string>
+            </property>
+        </action>
+        <action name="actionConvert">
+            <property name="text">
+                <string>Convert</string>
+            </property>
+            <property name="statusTip">
+                <string>Convert the previously opened file to .mp4 using ffmpeg</string>
+            </property>
+        </action>
+        <action name="actionPixel_size">
+            <property name="text">
+                <string>Pixel size</string>
+            </property>
+        </action>
+        <action name="actionMagnification">
+            <property name="text">
+                <string>Magnification</string>
+            </property>
+            <property name="statusTip">
+                <string>Defines the optical zoom</string>
+            </property>
+        </action>
+        <action name="actionSub_pixel_level">
+            <property name="text">
+                <string>Sub pixel level</string>
+            </property>
+            <property name="statusTip">
+                <string>100 is usually good</string>
+            </property>
+        </action>
+        <action name="actionEdit_objects_list">
+            <property name="text">
+                <string>Edit objects list</string>
+            </property>
+        </action>
+        <action name="view_violin">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="checked">
+                <bool>false</bool>
+            </property>
+            <property name="text">
+                <string>Violins</string>
+            </property>
+        </action>
+        <action name="view_position">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>Position [y(x)]</string>
+            </property>
+        </action>
+        <action name="actionSub_frameset">
+            <property name="text">
+                <string>Sub-frameset</string>
+            </property>
+            <property name="statusTip">
+                <string>Select a set to show and analyse</string>
+            </property>
+        </action>
+        <action name="actionAdd_box">
+            <property name="text">
+                <string>Add box</string>
+            </property>
+            <property name="statusTip">
+                <string>Add zone to analyse. Modify it on screen</string>
+            </property>
+            <property name="shortcut">
+                <string>A</string>
+            </property>
+        </action>
+        <action name="actionStart_analysis">
+            <property name="text">
+                <string>Start analysis</string>
+            </property>
+            <property name="shortcut">
+                <string>S</string>
+            </property>
+        </action>
+        <action name="view_position_x">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>x displacement [x(t)]</string>
+            </property>
+        </action>
+        <action name="view_position_y">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>y displacement [y(t)]</string>
+            </property>
+        </action>
+        <action name="view_position_all_on_one">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>All positions on one figure</string>
+            </property>
+        </action>
+        <action name="actionShow_results">
+            <property name="text">
+                <string>Show results</string>
+            </property>
+        </action>
+        <action name="actionExport_results">
+            <property name="text">
+                <string>Export results</string>
+            </property>
+        </action>
+        <action name="view_violin_all_on_one">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="checked">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>All violins on one figure</string>
+            </property>
+        </action>
+        <action name="view_violin_chop">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>Chopped violins</string>
+            </property>
+        </action>
+        <action name="view_phase">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>Phase</string>
+            </property>
+        </action>
+        <action name="view_step_length">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>Step length</string>
+            </property>
+        </action>
+        <action name="view_experimental">
+            <property name="checkable">
+                <bool>true</bool>
+            </property>
+            <property name="text">
+                <string>Experimental plot</string>
+            </property>
+        </action>
+    </widget>
+    <resources/>
+    <connections/>
+</ui>

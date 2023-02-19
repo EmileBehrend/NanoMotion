@@ -9,7 +9,7 @@ import seaborn as sns
 import mplcursors
 
 
-def plot_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_shift, fps, res, input_path, output_basepath, plots_dict, boxes_dict, chop=False,
+def plot_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_shift, fps, res, input_path, output_basepath, plots_dict, rectangles, chop=False,
                  chop_duration=0, start_frame=0):
     print("Started plotting results.")
     opened_plots = []
@@ -20,7 +20,7 @@ def plot_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_s
 
     output_basename = get_formatted_name(output_basepath)
 
-    for j in range(len(boxes_dict)):
+    for j in range(len(rectangles)):
         my_shift_x = shift_x[j]
         my_shift_y = shift_y[j]
         my_shift_p = shift_p[j]
@@ -300,8 +300,8 @@ def plot_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_s
     return opened_plots
 
 
-def export_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_shift, fps, res, output_basepath, boxes_dict, start_frame=0):
-    for j in range(len(boxes_dict)):
+def export_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box_shift, fps, res, output_basepath, rectangles, start_frame=0):
+    for j in range(len(rectangles)):
         my_pixels = pixels[j]
         my_mean = mean[j]
         my_shift_x = shift_x[j]
