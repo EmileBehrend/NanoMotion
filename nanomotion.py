@@ -291,13 +291,8 @@ class Main(QMainWindow, Ui_MainWindow):
 
         self.add_rectangle(number, x0, y0, width, height)
 
-    def debug(self, object):
-        print(object)
-        object_methods = [method_name for method_name in dir(object) if callable(getattr(object, method_name))]
-        print(object_methods)
-
     def pg_rectangle_selected(self, event):
-        print(f"Selected: {event}")
+        # print(f"Selected: {event}")
         if self.selected is not None:
             self.selected.setPen(pg.mkPen())  # set old selected to normal color
 
@@ -489,7 +484,7 @@ class Main(QMainWindow, Ui_MainWindow):
 
         pg.exporters.ImageExporter(self.pg_image_item.scene()).export(f"{self.output_basepath}_overview.png")
 
-        combined = skimage.color.gray2rgb(self.video_data.get_frame(int(self.line_start_frame.text())))
+        combined = skimage.color.gray2rgb(self.video_data.get_frame(int(self.line_start_frame.text()))).copy()
         for rectangle in self.rectangles:
             position = rectangle.pos()
             top_left = (int(position.x()), int(position.y() + rectangle.size()[1]))
@@ -543,8 +538,9 @@ class Main(QMainWindow, Ui_MainWindow):
 
             self.solver.set_arrow(parameters["j"], arrow)
 
-    def update_rectangle(self, j, pos_x, pos_y):
-        self.rectangles[j].setPos(pos_x, pos_y)
+    def update_rectangle(self, j, dx, dy):
+        pos = self.rectangles[j].pos()
+        self.rectangles[j].setPos(pos.x() + dx, pos.y() + dy)
 
     def show_results(self):
         if self.solver is None or self.solver.progress < 100:

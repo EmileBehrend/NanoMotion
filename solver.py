@@ -39,12 +39,20 @@ class Solver(QThread):
 
         self.start_frame = start_frame
         self.stop_frame = stop_frame
-        self.rectangles = rectangles
 
-        self.centers = [None for _ in self.rectangles]
+        self.rectangles = rectangles
+        self.local_rectangles = []
+
+        for rectangle in self.rectangles:
+            pos = rectangle.pos()
+            width, height = rectangle.size()
+
+            self.local_rectangles.append({"x": pos.x(), "y": pos.y(), "width": width, "height": height})
+
+        self.centers = [None for _ in self.local_rectangles]
 
         with self.mutex:
-            self.arrows = [None for _ in self.rectangles]
+            self.arrows = [None for _ in self.local_rectangles]
 
             self.go_on = True
 
@@ -53,14 +61,14 @@ class Solver(QThread):
         self.col_min = []
         self.col_max = []
 
-        self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.shift_y = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.shift_p = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.shift_x_y_error = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.box_shift = [[[0, 0] for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.rectangles]
-        self.cumulated_shift = [[0, 0] for _ in self.rectangles]
+        self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.shift_y = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.shift_p = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.shift_x_y_error = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.box_shift = [[[0, 0] for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
+        self.cumulated_shift = [[0, 0] for _ in self.local_rectangles]
 
         self.frame_n = None
         self.progress = 0
@@ -106,21 +114,18 @@ class Solver(QThread):
     def _close_to_zero(self, value):
         return int(value)  # integer casting truncates the number (1.2 -> 1, -1.2 -> -1)
 
-    def debug(self, object):
-        print(object)
-        object_methods = [method_name for method_name in dir(object) if callable(getattr(object, method_name))]
-        print(object_methods)
-
     def _draw_arrow(self, j, i, dx, dy):
         hypotenuse = np.sqrt(dx ** 2 + dy ** 2)
 
         angle = math.degrees(math.acos(dx / hypotenuse))
 
         # print(f"Hypotenuse: {hypotenuse}, angle: {angle}")
-        tail_length = hypotenuse * 100  # TODO: customize this
+        tail_length = hypotenuse  # TODO: customize this
         head_length = 1
 
-        width, height = self.rectangles[j].size()
+        rectangle = self.local_rectangles[j]
+        width = rectangle["width"]
+        height = rectangle["height"]
         starting_pos = (width / 2 - self.box_shift[j][i][0], height / 2 - self.box_shift[j][i][1])
 
         with self.mutex:
@@ -241,7 +246,7 @@ class Solver(QThread):
 
         frame_first = self._prepare_image(self.video_data.get_frame(self.start_frame))  # store the starting subimages for later comparison
 
-        for j in range(len(self.rectangles)):  # j iterates over all boxes
+        for j in range(len(self.local_rectangles)):  # j iterates over all boxes
             image_first, pixels = self._filter_image_subset(self._get_image_subset(frame_first, j))
             images.append(image_first)
 
@@ -255,11 +260,15 @@ class Solver(QThread):
             self.shift_x_y_error[j][0] = 0
             self.box_shift[j][0] = [0, 0]
 
-            pos = self.rectangles[j].pos()
-            width, height = self.rectangles[j].size()
+            rectangle = self.local_rectangles[j]
+            x = rectangle["x"]
+            y = rectangle["y"]
+            width = rectangle["width"]
+            height = rectangle["height"]
+
             self.centers[j] = [
-                pos.x() + width / 2,
-                pos.y() + height / 2
+                x + width / 2,
+                y + height / 2
             ]
 
             self._draw_arrow(j, 0, 0, 0)
@@ -299,8 +308,8 @@ class Solver(QThread):
             if self.write_target is not None:
                 colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
 
-            parameters = [None for _ in range(len(self.rectangles))]
-            for j in range(len(self.rectangles)):  # j iterates over all boxes
+            parameters = [None for _ in range(len(self.local_rectangles))]
+            for j in range(len(self.local_rectangles)):  # j iterates over all boxes
                 # Propagate previous box shifts
                 self.box_shift[j][offset][0] = self.box_shift[j][offset - 1][0]
                 self.box_shift[j][offset][1] = self.box_shift[j][offset - 1][1]
@@ -323,16 +332,19 @@ class Solver(QThread):
                     self.box_shift[j][offset][1] += to_shift[1]
 
                     print("Box %d - shifted at frame %d (~%ds)." % (j, i, i / self.fps))
+                    rectangle = self.local_rectangles[j]
+                    rectangle["x"] += to_shift[0]
+                    rectangle["y"] += to_shift[1]
 
-                    pos = self.rectangles[j].pos()
-                    self.rectangle_signal.emit(pos.x() + to_shift[0], pos.y() + to_shift[0])
+                    self.rectangle_signal.emit(j, to_shift[0], to_shift[1])
+
                     self._crop_coord(j)
 
                 parameters[j] = [images[j], self._get_image_subset(self.frame_n, j), self.upsample_factor]
 
             results = self._run_threading(parameters)
 
-            for j in range(len(self.rectangles)):
+            for j in range(len(self.local_rectangles)):
                 image_n, pixels, shift, error, phase = results[j]
                 self.pixels[j][offset] = pixels
                 self.mean[j][offset] = np.mean(image_n)
@@ -403,15 +415,14 @@ class Solver(QThread):
 
                     # Previous image (i - 1 or 0): images[j]
                     if self.compare_first:
-                        cv2.imwrite("./debug/box_%d-0.png" % (j), images[j])
+                        cv2.imwrite("./debug/box_%d-first.png" % j, self._get_image_subset(self.video_data.get_frame(0), j))
 
-                        previous = self.video_data.get_frame(i - 1)[self.row_min[j]:self.row_max[j], self.col_min[j]:self.col_max[j]]
-                        cv2.imwrite(("./debug/box_%d-%d_p.png" % (j, i - 1)), previous)
+                        cv2.imwrite("./debug/box_%d-%d_p.png" % (j, i - 1), self._get_image_subset(self.video_data.get_frame(i - 1), j))
                     else:
-                        cv2.imwrite(("./debug/box_%d-%d_p.png" % (j, i - 1)), images[j])
+                        cv2.imwrite("./debug/box_%d-%d_p.png" % (j, i - 1), images[j])
 
                     # Current image (i): parameters[j][0]
-                    cv2.imwrite(("./debug/box_%d-%d.png" % (j, i)), image_n)
+                    cv2.imwrite(("./debug/box_%d-%d.png" % (j, i)), self._get_image_subset(self.video_data.get_frame(i), j))
 
             if self.write_target is not None:
                 cv2.imwrite("%s_image_%d.png" % (self.write_target, i), colored_frame_n * 255)
@@ -424,7 +435,7 @@ class Solver(QThread):
             self.progress_signal.emit(self.progress, self.current_i, self.frame_n)
 
         # Post-process data (invert y-dimension)
-        for j in range(len(self.rectangles)):
+        for j in range(len(self.local_rectangles)):
             inverted_shift_y = [-shift_y for shift_y in self.shift_y[j]]
             self.shift_y[j] = inverted_shift_y
 
@@ -438,13 +449,25 @@ class Solver(QThread):
             self.col_min.clear()
             self.col_max.clear()
 
-            for i in range(len(self.rectangles)):
-                self._crop_coord(target=i)
-        else:
-            pos = self.rectangles[target].pos()
-            width, height = self.rectangles[target].size()
+            for rectangle in self.local_rectangles:
+                x = rectangle["x"]
+                y = rectangle["y"]
+                width = rectangle["width"]
+                height = rectangle["height"]
 
-            self.row_min.append(int(pos.y()))
-            self.row_max.append(int(pos.y() + height))
-            self.col_min.append(int(pos.x()))
-            self.col_max.append(int(pos.x() + width))
+                self.row_min.append(int(y))
+                self.row_max.append(int(y + height))
+                self.col_min.append(int(x))
+                self.col_max.append(int(x + width))
+        else:
+            rectangle = self.local_rectangles[target]
+
+            x = rectangle["x"]
+            y = rectangle["y"]
+            width = rectangle["width"]
+            height = rectangle["height"]
+
+            self.row_min[target] = int(y)
+            self.row_max[target] = int(y + height)
+            self.col_min[target] = int(x)
+            self.col_max[target] = int(x + width)

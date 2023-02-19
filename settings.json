@@ -1,5 +1,5 @@
 {
-    "last_file": "F:/EPFL/Capture/S. cerevisiae/Cerevisiae 2023-02-14/5m_ctrl_p1_1.mp4",
+    "last_file": "F:/EPFL/Capture/S. cerevisiae/Cerevisiae 2023-02-14/5m_amb_p1_1.mp4",
     "parameters": {
         "pixel_size": 1.67,
         "magnification": 0,
@@ -12,7 +12,7 @@
         "chop_sec": 2,
         "tracking": true,
         "compare_to_first": true,
-        "filter": false,
+        "filter": true,
         "windowing": true,
         "export": true,
         "matlab": false
@@ -107956,6 +107956,15 @@
                 "number": 19,
                 "x0": 274.77506976724726,
                 "y0": 263.91405240443345,
+                "width": 40.0,
+                "height": 40.0
+            }
+        },
+        "70a52d86e41ffd519f3ed53bbb5c0da0c58e3e97b2ebc5fdd84f4f8f0018ce87423c3bb0ea0a665016b77dc758f16f83c960927c185f6d05f3e62a4a7137b0e6": {
+            "0": {
+                "number": 0,
+                "x0": 636.0,
+                "y0": 503.0,
                 "width": 40.0,
                 "height": 40.0
             }
