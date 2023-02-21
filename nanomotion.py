@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import sys
 
 import PyQt5
@@ -45,6 +46,9 @@ class Main(QMainWindow, Ui_MainWindow):
 
         self.original_video_length = 0
         self.solver = None
+
+        if platform.system() == "Darwin":
+            self.menubar.setNativeMenuBar(False)
 
         self.actionOpen.triggered.connect(self.browse_files)
         self.actionExport_results.triggered.connect(self.export_results)
