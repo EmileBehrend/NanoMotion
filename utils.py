@@ -351,7 +351,6 @@ def ensure_directory(file, target_name):
 
     videofile_dir = os.path.dirname(os.path.abspath(file))
     target_dir = os.path.join(videofile_dir, target_name)
-    # "videofile_dir/target_name/formatted_name"
     output_dir = os.path.join(target_dir, formatted_name)
 
     os.makedirs(target_dir, exist_ok=True)

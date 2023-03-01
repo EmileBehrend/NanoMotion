@@ -316,7 +316,7 @@ class Solver(QThread):
 
                 # Shift before analysis (for the next frame)
                 to_shift = [0, 0]
-                if self.track and (abs(self.cumulated_shift[j][0]) >= 1.2 or abs(self.cumulated_shift[j][1]) >= 1.2):  # arbitrary value (1.2)
+                if self.track and (abs(self.cumulated_shift[j][0]) >= 1.2 or abs(self.cumulated_shift[j][1]) >= 1.2):  # arbitrary value (1)
                     to_shift = [
                         self._close_to_zero(self.cumulated_shift[j][0]),
                         self._close_to_zero(self.cumulated_shift[j][1])
