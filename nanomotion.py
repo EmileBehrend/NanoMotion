@@ -534,11 +534,11 @@ class Main(QMainWindow, Ui_MainWindow):
     def update_arrow(self, parameters):
         arrow = parameters["arrow"]
         if arrow is not None:
-            arrow.setStyle(angle=parameters["angle"], headLen=parameters["headLen"], tailLen=parameters["tailLen"])
+            arrow.setStyle(angle=parameters["angle"], headLen=parameters["headLen"], tailLen=parameters["tailLen"], pxMode=False)
             arrow.setPos(*parameters["pos"])
         else:
             arrow = pg.ArrowItem(parent=parameters["parent"], pos=parameters["pos"], angle=parameters["angle"], headLen=parameters["headLen"],
-                                 tailLen=parameters["tailLen"])
+                                 tailLen=parameters["tailLen"], pxMode=False)
 
             self.solver.set_arrow(parameters["j"], arrow)
 
