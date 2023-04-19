@@ -7,18 +7,21 @@ import sys
 
 import PyQt5
 import cv2
+import h5py
+import hdf5plugin
 import numpy as np
 import pims
 import pyqtgraph
 import pyqtgraph as pg
 import pyqtgraph.exporters
 import skimage.color
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QApplication, QFileDialog
 from PyQt5.uic import loadUiType
 
 import utils
 from solver import Solver
+from video_backend import VideoSequence, H5Sequence, PimsSequence
 
 dirname = os.path.dirname(__file__)
 
@@ -98,7 +101,7 @@ class Main(QMainWindow, Ui_MainWindow):
 
         self.file_name = None
         self.id = None
-        self.video_data = None
+        self.video_data: VideoSequence = None
 
         self.load_parameters()
 
@@ -111,39 +114,6 @@ class Main(QMainWindow, Ui_MainWindow):
 
         if args.autostart:
             self.start_analysis()
-
-    # def start_frame(self, update=True):
-    #     print("a")
-    #     if self.original_video_length != float("inf"):
-    #         if int(self.line_start_frame.text()) >= self.original_video_length:
-    #             self.line_start_frame.setText(str(self.original_video_length - 1))
-    #
-    #         if self.file_name != "":
-    #             try:
-    #                 if update:
-    #                     self.imshow.set_data(skimage.color.rgb2gray(self.video_data.get_frame(int(self.line_start_frame.text()))))
-    #                     self.figure.canvas.draw()
-    #                     self.figure.canvas.flush_events()
-    #                 return self.video_data.get_frame(int(self.line_start_frame.text()))
-    #             except Exception:
-    #                 print("Failed to show the first frame.")
-    #                 return 0
-    #     else:
-    #         return 0
-
-    # def stop_frame(self):
-    #     if self.original_video_length != float("inf"):
-    #         if int(self.line_stop_frame.text()) >= self.original_video_length:
-    #             self.line_stop_frame.setText(str(self.original_video_length - 1))
-    #
-    #         if self.file_name != "":
-    #             try:
-    #                 return self.video_data.get_frame(int(self.line_stop_frame.text()))
-    #             except Exception:
-    #                 print("Failed to load the last frame.")
-    #                 return 0
-    #         else:
-    #             return 0
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls:
@@ -175,7 +145,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.label_chop_sec.setEnabled(self.view_violin_chop.isChecked())
 
     def browse_files(self):
-        self.file_name, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "", "All Files (*);mp4 movie (*.mp4)")
+        self.file_name, _ = QFileDialog.getOpenFileName(self, "File to analyze", "", "All files (*);;Video files (.mp4 *.avi);;Stacks (*.h5s)")
         self.load_and_show_file()
 
     def unload_file(self):
@@ -204,12 +174,20 @@ class Main(QMainWindow, Ui_MainWindow):
 
         try:
             if os.path.isfile(self.file_name):
-                self.video_data = pims.Video(self.file_name)
+                _, extension = os.path.splitext(self.file_name)
+
+                if extension == ".h5s":
+                    self.video_data = H5Sequence(h5py.File(self.file_name))
+                else:
+                    self.video_data = PimsSequence(pims.Video(self.file_name))
 
                 with open(self.file_name, "rb") as stream:
                     self.id = hashlib.blake2b(stream.read()).hexdigest()
+
+                    # TODO: load Fletcher-32 checksums for HDF5 files
+                    # https://stackoverflow.com/questions/62946682/accessing-fletcher-32-checksum-in-hdf5-file
             else:
-                self.video_data = pims.ImageSequence(self.file_name)
+                self.video_data = PimsSequence(pims.ImageSequence(self.file_name))
 
                 self.id = self.file_name
         except Exception as e:
@@ -243,7 +221,7 @@ class Main(QMainWindow, Ui_MainWindow):
         shape = np.shape(self.video_data.get_frame(0))
         try:
             # Try to get the video length (can vary depending on the Python environment)
-            self.original_video_length = len(self.video_data)
+            self.original_video_length = self.video_data.length
         except Exception:
             print("Can't get video length.")
 
@@ -263,12 +241,14 @@ class Main(QMainWindow, Ui_MainWindow):
         try:
             display = self.video_data.get_frame(int(self.line_start_frame.text()))
 
-            self.pg_image_item.setImage(skimage.color.rgb2gray(display))
+            # self.pg_image_item.setImage(skimage.color.rgb2gray(display))
+            self.pg_image_item.setImage(display)
 
             print("Shown: %s." % display.dtype)
         except Exception as e:
             print(e)
-            self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
+            # self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
+            self.pg_image_item.setImage(self.video_data.get_frame(0))
 
         self.mplvl.addWidget(self.pg_widget)
 
@@ -471,20 +451,21 @@ class Main(QMainWindow, Ui_MainWindow):
             write_target = None
 
         print("Tracking: %s." % (self.checkBox_track.isChecked()))
-        self.solver = Solver(video_data=self.video_data,
-                             fps=float(self.line_fps.text()),
-                             rectangles=self.rectangles,
-                             upsample_factor=int(self.line_sub_pix.text()),
-                             stop_frame=int(self.line_stop_frame.text()),
-                             start_frame=int(self.line_start_frame.text()),
-                             res=float(self.line_pix_size.text()),
-                             track=self.checkBox_track.isChecked(),
-                             compare_first=self.checkBox_compare_first.isChecked(),
-                             filter=self.checkBox_filter.isChecked(),
-                             windowing=self.checkBox_windowing.isChecked(),
-                             matlab=self.checkBox_matlab.isChecked(),
-                             write_target=write_target
-                             )
+        self.solver = Solver(
+            video_data=self.video_data,
+            fps=float(self.line_fps.text()),
+            rectangles=self.rectangles,
+            upsample_factor=int(self.line_sub_pix.text()),
+            stop_frame=int(self.line_stop_frame.text()),
+            start_frame=int(self.line_start_frame.text()),
+            res=float(self.line_pix_size.text()),
+            track=self.checkBox_track.isChecked(),
+            compare_first=self.checkBox_compare_first.isChecked(),
+            filter=self.checkBox_filter.isChecked(),
+            windowing=self.checkBox_windowing.isChecked(),
+            matlab=self.checkBox_matlab.isChecked(),
+            write_target=write_target
+        )
 
         pg.exporters.ImageExporter(self.pg_image_item.scene()).export(f"{self.output_basepath}_overview.png")
 
@@ -553,21 +534,22 @@ class Main(QMainWindow, Ui_MainWindow):
         self.set_plot_options()
         self.save_parameters()  # only save parameters if there are plots to open
 
-        self.opened_plots = utils.plot_results(pixels=self.solver.pixels,
-                                               mean=self.solver.mean,
-                                               shift_x=self.solver.shift_x,
-                                               shift_y=self.solver.shift_y,
-                                               shift_p=self.solver.shift_p,
-                                               shift_x_y_error=self.solver.shift_x_y_error,
-                                               box_shift=self.solver.box_shift,
-                                               fps=self.solver.fps,
-                                               res=self.solver.res,
-                                               input_path=self.file_name,
-                                               output_basepath=self.output_basepath,
-                                               plots_dict=self.plots_dict,
-                                               rectangles=self.rectangles,
-                                               chop_duration=float(self.line_chop_sec.text()),
-                                               start_frame=self.solver.start_frame)
+        self.opened_plots = utils.plot_results(
+            pixels=self.solver.pixels,
+            mean=self.solver.mean,
+            shift_x=self.solver.shift_x,
+            shift_y=self.solver.shift_y,
+            shift_p=self.solver.shift_p,
+            shift_x_y_error=self.solver.shift_x_y_error,
+            box_shift=self.solver.box_shift,
+            fps=self.solver.fps,
+            res=self.solver.res,
+            input_path=self.file_name,
+            output_basepath=self.output_basepath,
+            plots_dict=self.plots_dict,
+            rectangles=self.rectangles,
+            chop_duration=float(self.line_chop_sec.text()),
+            start_frame=self.solver.start_frame)
 
         print("%d plots shown." % (len(self.opened_plots)))
 
@@ -576,24 +558,27 @@ class Main(QMainWindow, Ui_MainWindow):
 
     def export_results(self):
         if self.solver is not None:
-            utils.export_results(pixels=self.solver.pixels,
-                                 mean=self.solver.mean,
-                                 shift_x=self.solver.shift_x,
-                                 shift_y=self.solver.shift_y,
-                                 shift_p=self.solver.shift_p,
-                                 shift_x_y_error=self.solver.shift_x_y_error,
-                                 box_shift=self.solver.box_shift,
-                                 fps=self.solver.fps,
-                                 res=self.solver.res,
-                                 output_basepath=self.output_basepath,
-                                 rectangles=self.rectangles,
-                                 start_frame=self.solver.start_frame)
+            utils.export_results(
+                pixels=self.solver.pixels,
+                mean=self.solver.mean,
+                shift_x=self.solver.shift_x,
+                shift_y=self.solver.shift_y,
+                shift_p=self.solver.shift_p,
+                shift_x_y_error=self.solver.shift_x_y_error,
+                box_shift=self.solver.box_shift,
+                fps=self.solver.fps,
+                res=self.solver.res,
+                output_basepath=self.output_basepath,
+                rectangles=self.rectangles,
+                start_frame=self.solver.start_frame)
 
         print("Files exported.")
 
 
 if __name__ == "__main__":
-    print("Python interpreter: %s, version: %s." % (os.path.dirname(sys.executable), sys.version))
+    print(f"Python interpreter: {os.path.dirname(sys.executable)}, version: {sys.version}.")
+    print(f"HDF5Plugin: {hdf5plugin.version}")
+
     sys.stdout.flush()
 
     parser = argparse.ArgumentParser(description="Nanomotion software.")

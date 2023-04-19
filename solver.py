@@ -15,6 +15,8 @@ import skimage.registration
 import threading
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from video_backend import VideoSequence
+
 
 class Solver(QThread):
     progress_signal = pyqtSignal(int, int, object)
@@ -25,7 +27,7 @@ class Solver(QThread):
     def __init__(self, video_data, fps, res, rectangles, start_frame, stop_frame, upsample_factor, track, compare_first, filter, windowing, matlab,
                  write_target):
         QThread.__init__(self)
-        self.video_data = video_data  # store access to the video file to iterate over the frames
+        self.video_data: VideoSequence = video_data  # store access to the video file to iterate over the frames
 
         self.fps = fps  # frames per seconds
         self.res = res  # size of one pixel (um / pixel)
@@ -117,7 +119,7 @@ class Solver(QThread):
     def _draw_arrow(self, j, i, dx, dy):
         hypotenuse = np.sqrt(dx ** 2 + dy ** 2)
 
-        angle = math.degrees(math.acos(dx / hypotenuse))
+        angle = math.degrees(math.acos(dx / hypotenuse)) + 90
 
         # print(f"Hypotenuse: {hypotenuse}, angle: {angle}")
         tail_length = hypotenuse  # TODO: customize this
@@ -142,7 +144,7 @@ class Solver(QThread):
             self.arrow_signal.emit(parameters)
 
     def _prepare_image(self, image):
-        image = skimage.color.rgb2gray(image)
+        # image = skimage.color.rgb2gray(image)
 
         return image
 
@@ -286,27 +288,37 @@ class Solver(QThread):
 
             offset = i - self.start_frame
 
-            if i not in queue:
-                self.frame_n = self._prepare_image(self.video_data.get_frame(i))
-            else:
-                self.frame_n = self._prepare_image(queue[i].result())
+            read_frame, read_number = self.video_data.next()
+            print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
 
-            queue[i] = None
+            while read_number < i:  # i is always >= 1 (because frame 0 is the first frame reference)
+                read_frame, read_number = self.video_data.next()
+                print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
 
-            if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    queue[i + 1] = executor.submit(self.video_data.get_frame, i + 1)
+            self.frame_n = self._prepare_image(read_frame)
 
-                    # TODO: properly implement multi-threaded reads
-                    # for r in range(i + 1, i + min(5, self.stop_frame - i + 1)):  # pool next 5 frames
-                    #     if r in queue:  # already pooled
-                    #         continue
-                    #
-                    #     # print("Pooling frame: %d." % r)
-                    #     queue[r] = executor.submit(self.videodata.get_frame, r)
+            # if i not in queue:
+            #     self.frame_n = self._prepare_image(self.video_data.get_frame(i))
+            # else:
+            #     self.frame_n = self._prepare_image(queue[i].result())
+            #
+            # queue[i] = None
+            #
+            # if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
+            #     with concurrent.futures.ThreadPoolExecutor() as executor:
+            #         queue[i + 1] = executor.submit(self.video_data.get_frame, i + 1)
+            #
+            #         # TODO: properly implement multi-threaded reads
+            #         # for r in range(i + 1, i + min(5, self.stop_frame - i + 1)):  # pool next 5 frames
+            #         #     if r in queue:  # already pooled
+            #         #         continue
+            #         #
+            #         #     # print("Pooling frame: %d." % r)
+            #         #     queue[r] = executor.submit(self.videodata.get_frame, r)
 
             if self.write_target is not None:
-                colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
+                # colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
+                colored_frame_n = self.frame_n.copy()  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
 
             parameters = [None for _ in range(len(self.local_rectangles))]
             for j in range(len(self.local_rectangles)):  # j iterates over all boxes
