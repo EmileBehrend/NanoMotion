@@ -145,7 +145,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.label_chop_sec.setEnabled(self.view_violin_chop.isChecked())
 
     def browse_files(self):
-        self.file_name, _ = QFileDialog.getOpenFileName(self, "File to analyze", "", "All files (*);;Video files (.mp4 *.avi);;Stacks (*.h5s)")
+        self.file_name, _ = QFileDialog.getOpenFileName(self, "File to analyze", "", "All files (*);;Video files (.mp4 *.avi);;Stacks (*.h5 *.h5s)")
         self.load_and_show_file()
 
     def unload_file(self):
@@ -176,7 +176,7 @@ class Main(QMainWindow, Ui_MainWindow):
             if os.path.isfile(self.file_name):
                 _, extension = os.path.splitext(self.file_name)
 
-                if extension == ".h5s":
+                if extension in [".h5", ".h5s"]:
                     self.video_data = H5Sequence(h5py.File(self.file_name))
                 else:
                     self.video_data = PimsSequence(pims.Video(self.file_name))
@@ -241,14 +241,14 @@ class Main(QMainWindow, Ui_MainWindow):
         try:
             display = self.video_data.get_frame(int(self.line_start_frame.text()))
 
-            # self.pg_image_item.setImage(skimage.color.rgb2gray(display))
-            self.pg_image_item.setImage(display)
+            self.pg_image_item.setImage(skimage.color.rgb2gray(display))
+            # self.pg_image_item.setImage(display)
 
             print("Shown: %s." % display.dtype)
         except Exception as e:
             print(e)
-            # self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
-            self.pg_image_item.setImage(self.video_data.get_frame(0))
+            self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
+            # self.pg_image_item.setImage(self.video_data.get_frame(0))
 
         self.mplvl.addWidget(self.pg_widget)
 

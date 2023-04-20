@@ -144,7 +144,7 @@ class Solver(QThread):
             self.arrow_signal.emit(parameters)
 
     def _prepare_image(self, image):
-        # image = skimage.color.rgb2gray(image)
+        image = skimage.color.rgb2gray(image)
 
         return image
 
@@ -289,11 +289,16 @@ class Solver(QThread):
             offset = i - self.start_frame
 
             read_frame, read_number = self.video_data.next()
-            print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
+            # print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
+
+            if read_number > i:
+                self.video_data.reset_iterator()
+
+                read_frame, read_number = self.video_data.next()
 
             while read_number < i:  # i is always >= 1 (because frame 0 is the first frame reference)
                 read_frame, read_number = self.video_data.next()
-                print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
+                # print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
 
             self.frame_n = self._prepare_image(read_frame)
 

@@ -9,7 +9,10 @@ class VideoSequence:
     def get_frame(self, number: int) -> np.ndarray:
         raise NotImplementedError("Not implemented.")
 
-    def next(self) -> (np.ndarray | None, int):
+    def next(self) -> (np.ndarray | None, int | None):
+        raise NotImplementedError("Not implemented.")
+
+    def reset_iterator(self):
         raise NotImplementedError("Not implemented.")
 
 
@@ -25,9 +28,9 @@ class PimsSequence(VideoSequence):
     def get_frame(self, number: int) -> np.ndarray:
         return self.pims_object.get_frame(number)
 
-    def next(self) -> (np.ndarray | None, int):
+    def next(self) -> (np.ndarray | None, int | None):
         if self.number + 2 >= self.length:
-            return None
+            return None, None
         else:
             frame = self.pims_object.get_frame(self.number)
 
@@ -35,6 +38,9 @@ class PimsSequence(VideoSequence):
             self.number += 1
 
             return frame, frame_number
+
+    def reset_iterator(self):
+        self.number = 0
 
 
 class H5Sequence(VideoSequence):
@@ -54,9 +60,9 @@ class H5Sequence(VideoSequence):
     def get_frame(self, number: int) -> np.ndarray:
         return self.h5_dataset[number]
 
-    def next(self) -> (np.ndarray | None, int):
+    def next(self) -> (np.ndarray | None, int | None):
         if self.number + 2 >= self.length:
-            return None
+            return None, None
         else:
             if self.chunks is None:
                 self.chunks = self.h5_dataset.iter_chunks()
@@ -73,3 +79,11 @@ class H5Sequence(VideoSequence):
         self.number += 1
 
         return self.chunks_loaded_data[self.chunks_loaded_index], frame_number
+
+    def reset_iterator(self):
+        self.number = 0
+
+        self.chunks = None
+        self.chunks_loaded_data = None
+        self.chunks_loaded_index = 0
+        self.chunks_last_loaded = 0
