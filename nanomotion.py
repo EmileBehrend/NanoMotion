@@ -353,6 +353,7 @@ class Main(QMainWindow, Ui_MainWindow):
             self.line_stop_frame.setText(str(self.json_data["parameters"]["stop_frame"]))
             self.line_w.setText(str(self.json_data["parameters"]["box_width"]))
             self.line_h.setText(str(self.json_data["parameters"]["box_height"]))
+            self.line_delta.setText(str(self.json_data["parameters"]["delta"]))
             self.line_chop_sec.setText(str(self.json_data["parameters"]["chop_sec"]))
             self.checkBox_track.setChecked(self.json_data["parameters"]["tracking"])
             self.checkBox_compare_first.setChecked(self.json_data["parameters"]["compare_to_first"])
@@ -402,6 +403,7 @@ class Main(QMainWindow, Ui_MainWindow):
                 "stop_frame": int(self.line_stop_frame.text()),
                 "box_width": int(self.line_w.text()),
                 "box_height": int(self.line_h.text()),
+                "delta": int(self.line_delta.text()),
                 "chop_sec": int(self.line_chop_sec.text()),
                 "tracking": self.checkBox_track.isChecked(),
                 "compare_to_first": self.checkBox_compare_first.isChecked(),
@@ -461,6 +463,7 @@ class Main(QMainWindow, Ui_MainWindow):
             res=float(self.line_pix_size.text()),
             track=self.checkBox_track.isChecked(),
             compare_first=self.checkBox_compare_first.isChecked(),
+            delta=int(self.line_delta.text()),
             filter=self.checkBox_filter.isChecked(),
             windowing=self.checkBox_windowing.isChecked(),
             matlab=self.checkBox_matlab.isChecked(),

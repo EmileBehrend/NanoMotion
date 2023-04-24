@@ -24,8 +24,8 @@ class Solver(QThread):
     rectangle_signal = pyqtSignal(int, int, int)
     mutex = threading.Lock()
 
-    def __init__(self, video_data, fps, res, rectangles, start_frame, stop_frame, upsample_factor, track, compare_first, filter, windowing, matlab,
-                 write_target):
+    def __init__(self, video_data, fps, res, rectangles, start_frame, stop_frame, upsample_factor, track, compare_first, delta, filter, windowing,
+                 matlab, write_target):
         QThread.__init__(self)
         self.video_data: VideoSequence = video_data  # store access to the video file to iterate over the frames
 
@@ -34,6 +34,7 @@ class Solver(QThread):
         self.upsample_factor = upsample_factor
         self.track = track
         self.compare_first = compare_first
+        self.delta = delta
         self.filter = filter
         self.windowing = windowing
         self.matlab = matlab
@@ -119,7 +120,7 @@ class Solver(QThread):
     def _draw_arrow(self, j, i, dx, dy):
         hypotenuse = np.sqrt(dx ** 2 + dy ** 2)
 
-        angle = math.degrees(math.acos(dx / hypotenuse)) + 90
+        angle = math.degrees(math.acos(dx / hypotenuse))
 
         # print(f"Hypotenuse: {hypotenuse}, angle: {angle}")
         tail_length = hypotenuse  # TODO: customize this
@@ -246,21 +247,36 @@ class Solver(QThread):
 
         images = []  # last image subimages array
 
+        delta_images = []
+        if self.delta > 1:  # TODO: rework this
+            for i in range(self.delta):
+                frame = self._prepare_image(self.video_data.get_frame(self.start_frame + i))
+
+                delta_j = []
+                for j in range(len(self.local_rectangles)):  # j iterates over all boxes
+                    frame_j, pixels = self._filter_image_subset(self._get_image_subset(frame, j))
+
+                    delta_j.append(frame_j)
+
+                    # TODO: calculate shifts between delta pixels
+                    self.pixels[j][i] = pixels
+                    self.mean[j][i] = np.mean(frame_j)
+                    self.shift_x[j][i] = 0
+                    self.shift_y[j][i] = 0
+                    self.shift_p[j][i] = 0
+                    self.shift_x_y_error[j][i] = 0
+                    self.box_shift[j][0] = [0, 0]
+
+                delta_images.append(delta_j)
+
         frame_first = self._prepare_image(self.video_data.get_frame(self.start_frame))  # store the starting subimages for later comparison
 
         for j in range(len(self.local_rectangles)):  # j iterates over all boxes
             image_first, pixels = self._filter_image_subset(self._get_image_subset(frame_first, j))
+
             images.append(image_first)
 
-            print("Box %d (%d, %d, %d, %d)." % (j, self.row_min[j], self.row_max[j], self.col_min[j], self.col_max[j]))
-
-            self.pixels[j][0] = pixels
-            self.mean[j][0] = np.mean(image_first)
-            self.shift_x[j][0] = 0
-            self.shift_y[j][0] = 0
-            self.shift_p[j][0] = 0
-            self.shift_x_y_error[j][0] = 0
-            self.box_shift[j][0] = [0, 0]
+            # print("Box %d (%d, %d, %d, %d)." % (j, self.row_min[j], self.row_max[j], self.col_min[j], self.col_max[j]))
 
             rectangle = self.local_rectangles[j]
             x = rectangle["x"]
@@ -275,18 +291,26 @@ class Solver(QThread):
 
             self._draw_arrow(j, 0, 0, 0)
 
+            self.pixels[j][0] = pixels
+            self.mean[j][0] = np.mean(image_first)
+            self.shift_x[j][0] = 0
+            self.shift_y[j][0] = 0
+            self.shift_p[j][0] = 0
+            self.shift_x_y_error[j][0] = 0
+            self.box_shift[j][0] = [0, 0]
+
         length = self.stop_frame - self.start_frame
         progress_pivot = 0 - 5
 
         queue = {}
-        for i in range(self.start_frame + 1, self.stop_frame + 1):  # i iterates over all frames
+        for i in range(self.start_frame + self.delta, self.stop_frame + 1):  # i iterates over all frames
             with self.mutex:
                 if not self.go_on:  # condition checked to be able to stop the thread
                     return
 
-            self.current_i = i
+            from_start = i - self.start_frame
 
-            offset = i - self.start_frame
+            self.current_i = i
 
             read_frame, read_number = self.video_data.next()
             # print(f"Number: {read_number}, frame: {np.shape(read_frame)}")
@@ -328,8 +352,8 @@ class Solver(QThread):
             parameters = [None for _ in range(len(self.local_rectangles))]
             for j in range(len(self.local_rectangles)):  # j iterates over all boxes
                 # Propagate previous box shifts
-                self.box_shift[j][offset][0] = self.box_shift[j][offset - 1][0]
-                self.box_shift[j][offset][1] = self.box_shift[j][offset - 1][1]
+                self.box_shift[j][from_start][0] = self.box_shift[j][from_start - 1][0]
+                self.box_shift[j][from_start][1] = self.box_shift[j][from_start - 1][1]
 
                 # Shift before analysis (for the next frame)
                 to_shift = [0, 0]
@@ -345,8 +369,8 @@ class Solver(QThread):
                     self.cumulated_shift[j][0] -= to_shift[0]
                     self.cumulated_shift[j][1] -= to_shift[1]
 
-                    self.box_shift[j][offset][0] += to_shift[0]
-                    self.box_shift[j][offset][1] += to_shift[1]
+                    self.box_shift[j][from_start][0] += to_shift[0]
+                    self.box_shift[j][from_start][1] += to_shift[1]
 
                     print("Box %d - shifted at frame %d (~%ds)." % (j, i, i / self.fps))
                     rectangle = self.local_rectangles[j]
@@ -363,8 +387,8 @@ class Solver(QThread):
 
             for j in range(len(self.local_rectangles)):
                 image_n, pixels, shift, error, phase = results[j]
-                self.pixels[j][offset] = pixels
-                self.mean[j][offset] = np.mean(image_n)
+                self.pixels[j][from_start] = pixels
+                self.mean[j][from_start] = np.mean(image_n)
 
                 shift[0], shift[1] = -shift[1], -shift[0]  # (-y, -x) → (x, y)
 
@@ -381,11 +405,26 @@ class Solver(QThread):
                 relative_shift = [0, 0]
                 computed_error = 0
                 # TODO: fix error computation
-                if self.compare_first:
+                if self.delta > 1:
+                    # TODO: fix delta subtracting
+                    # print(f"from_start: {from_start}, x: {self.shift_x[j]}")
+                    #
+                    # relative_shift = [
+                    #     shift[0] + self.shift_x[j][from_start - self.delta] - self.shift_x[j][from_start - 1],
+                    #     shift[1] + self.shift_y[j][from_start - self.delta] - self.shift_y[j][from_start - 1],
+                    #     phase + self.shift_p[j][from_start - self.delta] - self.shift_p[j][from_start - 1]
+                    # ]
+
                     relative_shift = [
-                        shift[0] - self.shift_x[j][offset - 1],
-                        shift[1] - self.shift_y[j][offset - 1],
-                        phase - self.shift_p[j][offset - 1]
+                        shift[0],
+                        shift[1],
+                        phase
+                    ]
+                elif self.compare_first:
+                    relative_shift = [
+                        shift[0] - self.shift_x[j][from_start - 1],
+                        shift[1] - self.shift_y[j][from_start - 1],
+                        phase - self.shift_p[j][from_start - 1]
                     ]
 
                     # computed_error = error
@@ -401,16 +440,20 @@ class Solver(QThread):
                 self.cumulated_shift[j][0] += relative_shift[0]
                 self.cumulated_shift[j][1] += relative_shift[1]
 
-                self.shift_x[j][offset] = self.shift_x[j][offset - 1] + relative_shift[0]
-                self.shift_y[j][offset] = self.shift_y[j][offset - 1] + relative_shift[1]
-                self.shift_p[j][offset] = self.shift_p[j][offset - 1] + relative_shift[2]
+                # print(f"From start: {from_start}")
+                # print(f"Shift x: {self.shift_x[j]}")
 
-                self.shift_x_y_error[j][offset] = computed_error
+                self.shift_x[j][from_start] = self.shift_x[j][from_start - 1] + relative_shift[0]
+                self.shift_y[j][from_start] = self.shift_y[j][from_start - 1] + relative_shift[1]
+                self.shift_p[j][from_start] = self.shift_p[j][from_start - 1] + relative_shift[2]
+
+                self.shift_x_y_error[j][from_start] = computed_error
 
                 # TODO: phase difference
                 # TODO: take into account rotation (https://scikit-image.org/docs/stable/auto_examples/registration/plot_register_rotation.html).
 
-                self._draw_arrow(j, offset, self.shift_x[j][offset] + self.box_shift[j][offset][0], self.shift_y[j][offset] + self.box_shift[j][offset][1])
+                self._draw_arrow(j, from_start, self.shift_x[j][from_start] + self.box_shift[j][from_start][0],
+                                 self.shift_y[j][from_start] + self.box_shift[j][from_start][1])
 
                 # if j == 1:
                 #     print("Box %d - raw shift: (%f, %f), relative shift: (%f, %f), cumulated shift: (%f, %f), error: %f."
@@ -419,12 +462,17 @@ class Solver(QThread):
                 if self.write_target is not None:
                     colored_frame_n = self._combine_subset(colored_frame_n, j, image_n)
 
-                if not self.compare_first:  # store the current image to be compared later
-                    images[j] = image_n
+                if not self.compare_first:
+                    if self.delta > 1:
+                        images[j] = delta_images[1][j]  # TODO: generalize delta (1 means previous image, higher means storing a list)
+
+                        delta_images[0][j] = image_n  # first array will be moved to the last position later
+                    else:  # store the current image to be compared later
+                        images[j] = image_n
 
                 if i in self.debug_frames:
                     print("Box %d, frame %d." % (j, i))
-                    print("Previous shift: %f, %f." % (self.shift_x[j][offset - 1], self.shift_y[j][offset - 1]))
+                    print("Previous shift: %f, %f." % (self.shift_x[j][from_start - 1], self.shift_y[j][from_start - 1]))
                     print("Current shift: %f, %f." % (shift[0], shift[1]))
                     print("Relative shift: %f, %f." % (relative_shift[0], relative_shift[1]))
 
@@ -441,12 +489,15 @@ class Solver(QThread):
                     # Current image (i): parameters[j][0]
                     cv2.imwrite(("./debug/box_%d-%d.png" % (j, i)), self._get_image_subset(self.video_data.get_frame(i), j))
 
+            if self.delta > 1:
+                delta_images.append(delta_images.pop(0))  # move first element (which was updated now) to the last position
+
             if self.write_target is not None:
                 cv2.imwrite("%s_image_%d.png" % (self.write_target, i), colored_frame_n * 255)
 
             self.progress = int(((i - self.start_frame) / length) * 100)
             if self.progress > progress_pivot + 4:
-                print("%d%% (frame: %d/%d, real frame: %d)." % (self.progress, offset, self.stop_frame - self.start_frame, i))
+                print("%d%% (frame: %d/%d, real frame: %d)." % (self.progress, from_start, self.stop_frame - self.start_frame, i))
                 progress_pivot = self.progress
 
             self.progress_signal.emit(self.progress, self.current_i, self.frame_n)

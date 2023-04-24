@@ -341,7 +341,7 @@ def export_results(pixels, mean, shift_x, shift_y, shift_p, shift_x_y_error, box
 
 def get_formatted_name(file):
     if "." in file:
-        return os.path.basename(file)[:-4]
+        return os.path.splitext(os.path.basename(file))[0]
     else:
         return os.path.basename(file)
 
