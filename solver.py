@@ -405,22 +405,7 @@ class Solver(QThread):
                 relative_shift = [0, 0]
                 computed_error = 0
                 # TODO: fix error computation
-                if self.delta > 1:
-                    # TODO: fix delta subtracting
-                    # print(f"from_start: {from_start}, x: {self.shift_x[j]}")
-                    #
-                    # relative_shift = [
-                    #     shift[0] + self.shift_x[j][from_start - self.delta] - self.shift_x[j][from_start - 1],
-                    #     shift[1] + self.shift_y[j][from_start - self.delta] - self.shift_y[j][from_start - 1],
-                    #     phase + self.shift_p[j][from_start - self.delta] - self.shift_p[j][from_start - 1]
-                    # ]
-
-                    relative_shift = [
-                        shift[0],
-                        shift[1],
-                        phase
-                    ]
-                elif self.compare_first:
+                if self.compare_first:
                     relative_shift = [
                         shift[0] - self.shift_x[j][from_start - 1],
                         shift[1] - self.shift_y[j][from_start - 1],
@@ -429,13 +414,29 @@ class Solver(QThread):
 
                     # computed_error = error
                 else:
-                    relative_shift = [
-                        shift[0],
-                        shift[1],
-                        phase
-                    ]
+                    if self.delta > 1:
+                        # TODO: fix delta subtracting
+                        print(f"from_start: {from_start}, x: {self.shift_x[j]}")
 
-                    # computed_error = error + self.shift_x_y_error[j][offset - 1]
+                        # relative_shift = [
+                        #     shift[0] + self.shift_x[j][from_start - self.delta] - self.shift_x[j][from_start - 1],
+                        #     shift[1] + self.shift_y[j][from_start - self.delta] - self.shift_y[j][from_start - 1],
+                        #     phase + self.shift_p[j][from_start - self.delta] - self.shift_p[j][from_start - 1]
+                        # ]
+
+                        relative_shift = [
+                            shift[0],
+                            shift[1],
+                            phase
+                        ]
+                    else:
+                        relative_shift = [
+                            shift[0],
+                            shift[1],
+                            phase
+                        ]
+
+                        # computed_error = error + self.shift_x_y_error[j][offset - 1]
 
                 self.cumulated_shift[j][0] += relative_shift[0]
                 self.cumulated_shift[j][1] += relative_shift[1]
