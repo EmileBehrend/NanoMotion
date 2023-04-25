@@ -168,36 +168,37 @@ class Main(QMainWindow, Ui_MainWindow):
         mapped = self.pg_view_box.mapSceneToView(pos)
         self.cursor = (mapped.x(), mapped.y())
 
-    def load_and_show_file(self):
+    def load_and_show_file(self, load_file=True):
         if self.file_name is None:
             return
 
-        try:
-            if os.path.isfile(self.file_name):
-                _, extension = os.path.splitext(self.file_name)
+        if load_file:
+            try:
+                if os.path.isfile(self.file_name):
+                    _, extension = os.path.splitext(self.file_name)
 
-                if extension in [".h5", ".h5s"]:
-                    self.video_data = H5Sequence(h5py.File(self.file_name))
+                    if extension in [".h5", ".h5s"]:
+                        self.video_data = H5Sequence(h5py.File(self.file_name))
+                    else:
+                        self.video_data = PimsSequence(pims.Video(self.file_name))
+
+                    with open(self.file_name, "rb") as stream:
+                        self.id = hashlib.blake2b(stream.read()).hexdigest()
+
+                        # TODO: load Fletcher-32 checksums for HDF5 files
+                        # https://stackoverflow.com/questions/62946682/accessing-fletcher-32-checksum-in-hdf5-file
                 else:
-                    self.video_data = PimsSequence(pims.Video(self.file_name))
+                    self.video_data = PimsSequence(pims.ImageSequence(self.file_name))
 
-                with open(self.file_name, "rb") as stream:
-                    self.id = hashlib.blake2b(stream.read()).hexdigest()
+                    self.id = self.file_name
+            except Exception as e:
+                print(f"Failed to load file/folder '{self.file_name}'.")
+                print(e)
 
-                    # TODO: load Fletcher-32 checksums for HDF5 files
-                    # https://stackoverflow.com/questions/62946682/accessing-fletcher-32-checksum-in-hdf5-file
-            else:
-                self.video_data = PimsSequence(pims.ImageSequence(self.file_name))
+                if args.autostart and args.quit:  # silent quit if no file was found and automation is running
+                    app.quit()
 
-                self.id = self.file_name
-        except Exception as e:
-            print(f"Failed to load file/folder '{self.file_name}'.")
-            print(e)
-
-            if args.autostart and args.quit:  # silent quit if no file was found and automation is running
-                app.quit()
-
-            return
+                return
 
         print(f"Loaded file '{self.file_name}'")
         if self.id in self.json_data["boxes"]:
@@ -558,7 +559,7 @@ class Main(QMainWindow, Ui_MainWindow):
         print("%d plots shown." % (len(self.opened_plots)))
 
     def reset_boxes(self):
-        self.load_and_show_file()  # reloading the file resets everything
+        self.load_and_show_file(load_file=False)  # reloading the file resets everything
 
     def export_results(self):
         if self.solver is not None:
