@@ -472,15 +472,16 @@ class Main(QMainWindow, Ui_MainWindow):
 
         pg.exporters.ImageExporter(self.pg_image_item.scene()).export(f"{self.output_basepath}_overview.png")
 
-        combined = skimage.color.gray2rgb(self.video_data.get_frame(int(self.line_start_frame.text()))).copy()
-        for rectangle in self.rectangles:
-            position = rectangle.pos()
-            top_left = (int(position.x()), int(position.y() + rectangle.size()[1]))
-            bottom_right = (int(position.x() + rectangle.size()[0]), int(position.y()))
-
-            combined = cv2.rectangle(combined, top_left, bottom_right, (255, 0, 0), 1)
-
-        skimage.io.imsave(f"{self.output_basepath}_raw.png", combined)
+        # combined = skimage.color.gray2rgb(self.video_data.get_frame(int(self.line_start_frame.text()))).copy()
+        # for rectangle in self.rectangles:
+        #     position = rectangle.pos()
+        #     top_left = (int(position.x()), int(position.y() + rectangle.size()[1]))
+        #     bottom_right = (int(position.x() + rectangle.size()[0]), int(position.y()))
+        #
+        #     combined = cv2.rectangle(combined, top_left, bottom_right, (255, 0, 0), 1)
+        #
+        # skimage.io.imsave(f"{self.output_basepath}_raw.png", combined)
+        skimage.io.imsave(f"{self.output_basepath}_raw.png", skimage.color.rgb2gray(self.video_data.get_frame(int(self.line_start_frame.text()))))
 
         self.solver.progress_signal.connect(self.update_progress)
         self.solver.arrow_signal.connect(self.update_arrow)

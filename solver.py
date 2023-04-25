@@ -205,7 +205,7 @@ class Solver(QThread):
         current_ft = np.fft.fft2(current)
 
         if self.matlab is False:
-            shift, error, phase = skimage.registration.phase_cross_correlation(base_ft, current_ft, space="fourier", upsample_factor=upsample_factor)
+            shift, error, phase = skimage.registration.phase_cross_correlation(base_ft, current_ft, upsample_factor=upsample_factor, space="fourier", disambiguate=True, normalization=None)
         else:
             import matlab
             import matlab.engine
@@ -390,6 +390,7 @@ class Solver(QThread):
                 self.pixels[j][from_start] = pixels
                 self.mean[j][from_start] = np.mean(image_n)
 
+                shift = list(shift)  # convert tuple to list
                 shift[0], shift[1] = -shift[1], -shift[0]  # (-y, -x) → (x, y)
 
                 # shift[0] is the x displacement computed by comparing the first (if self.compare_first is True) or
@@ -416,8 +417,8 @@ class Solver(QThread):
                 else:
                     if self.delta > 1:
                         # TODO: fix delta subtracting
-                        print(f"from_start: {from_start}, x: {self.shift_x[j]}")
-
+                        # print(f"from_start: {from_start}, x: {self.shift_x[j]}")
+                        #
                         # relative_shift = [
                         #     shift[0] + self.shift_x[j][from_start - self.delta] - self.shift_x[j][from_start - 1],
                         #     shift[1] + self.shift_y[j][from_start - self.delta] - self.shift_y[j][from_start - 1],
