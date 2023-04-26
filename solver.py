@@ -1,18 +1,19 @@
 import concurrent.futures
+import importlib
 import io
 import math
 import os
+import threading
 
 import cv2
 import matplotlib
 import matplotlib.patches
 import numpy as np
-import pyqtgraph as pg
 import scipy as sp
 import skimage.color
 import skimage.filters
 import skimage.registration
-import threading
+import skimage.restoration
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from video_backend import VideoSequence
@@ -24,19 +25,21 @@ class Solver(QThread):
     rectangle_signal = pyqtSignal(int, int, int)
     mutex = threading.Lock()
 
-    def __init__(self, video_data, fps, res, rectangles, start_frame, stop_frame, upsample_factor, track, compare_first, delta, filter, windowing,
+    def __init__(self, video_data, rectangles, fps, resolution, upsample_factor, start_frame, stop_frame, track, compare_first, delta, filtering, windowing,
+                 contrast,
                  matlab, write_target):
         QThread.__init__(self)
         self.video_data: VideoSequence = video_data  # store access to the video file to iterate over the frames
 
         self.fps = fps  # frames per seconds
-        self.res = res  # size of one pixel (um / pixel)
+        self.resolution = resolution  # size of one pixel (um / pixel)
         self.upsample_factor = upsample_factor
+        self.delta = delta
         self.track = track
         self.compare_first = compare_first
-        self.delta = delta
-        self.filter = filter
+        self.filtering = filtering
         self.windowing = windowing
+        self.contrast = contrast
         self.matlab = matlab
         self.matlab_engine = None
 
@@ -144,18 +147,23 @@ class Solver(QThread):
 
             self.arrow_signal.emit(parameters)
 
-    def _prepare_image(self, image):
+    def _prepare_image(self, image: np.ndarray) -> np.ndarray:
         image = skimage.color.rgb2gray(image)
+
+        import filter
+        importlib.reload(filter)
+
+        image = filter.filter_image(image, contrast=self.contrast)
 
         return image
 
-    def _get_image_subset(self, image, j):
+    def _get_image_subset(self, image: np.ndarray, j: int) -> np.ndarray:
         return image[self.row_min[j]:self.row_max[j], self.col_min[j]:self.col_max[j]]
 
-    def _filter_image_subset(self, image):
+    def _filter_image_subset(self, image: np.ndarray) -> (np.ndarray, int):
         pixels = 0
 
-        if self.filter and len(self.debug_frames) == 0:
+        if self.filtering and len(self.debug_frames) == 0:
             image = skimage.filters.difference_of_gaussians(image, 0.5, 25)
 
         if self.windowing:
@@ -205,7 +213,10 @@ class Solver(QThread):
         current_ft = np.fft.fft2(current)
 
         if self.matlab is False:
-            shift, error, phase = skimage.registration.phase_cross_correlation(base_ft, current_ft, upsample_factor=upsample_factor, space="fourier", disambiguate=True, normalization=None)
+            # `disambiguate` to False produces better results
+            # `normalization` must be set to None
+            shift, error, phase = skimage.registration.phase_cross_correlation(base_ft, current_ft, upsample_factor=upsample_factor, space="fourier",
+                                                                               disambiguate=False, normalization=None)
         else:
             import matlab
             import matlab.engine
@@ -346,8 +357,8 @@ class Solver(QThread):
             #         #     queue[r] = executor.submit(self.videodata.get_frame, r)
 
             if self.write_target is not None:
-                # colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
-                colored_frame_n = self.frame_n.copy()  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
+                colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
+                # colored_frame_n = self.frame_n.copy()  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
 
             parameters = [None for _ in range(len(self.local_rectangles))]
             for j in range(len(self.local_rectangles)):  # j iterates over all boxes

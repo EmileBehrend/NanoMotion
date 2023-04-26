@@ -1,12 +1,12 @@
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import platform
 import sys
 
 import PyQt5
-import cv2
 import h5py
 import hdf5plugin
 import numpy as np
@@ -15,12 +15,12 @@ import pyqtgraph
 import pyqtgraph as pg
 import pyqtgraph.exporters
 import skimage.color
+import skimage.exposure
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QApplication, QFileDialog
 from PyQt5.uic import loadUiType
 
 import utils
-from solver import Solver
 from video_backend import VideoSequence, H5Sequence, PimsSequence
 
 dirname = os.path.dirname(__file__)
@@ -242,13 +242,20 @@ class Main(QMainWindow, Ui_MainWindow):
         try:
             display = self.video_data.get_frame(int(self.line_start_frame.text()))
 
-            self.pg_image_item.setImage(skimage.color.rgb2gray(display))
+            display = skimage.color.rgb2gray(display)
+
+            import filter
+            importlib.reload(filter)
+
+            display = filter.filter_image(display, contrast=self.checkbox_contrast.isChecked())
+
+            self.pg_image_item.setImage(display)
             # self.pg_image_item.setImage(display)
 
-            print("Shown: %s." % display.dtype)
+            print(f"Image: {display.dtype}")
         except Exception as e:
             print(e)
-            self.pg_image_item.setImage(skimage.color.rgb2gray(self.video_data.get_frame(0)))
+            self.pg_image_item.setImage(self.video_data.get_frame(0))
             # self.pg_image_item.setImage(self.video_data.get_frame(0))
 
         self.mplvl.addWidget(self.pg_widget)
@@ -318,7 +325,7 @@ class Main(QMainWindow, Ui_MainWindow):
             else:
                 rectangle = self.selected
 
-        print(f"Rectangle: {rectangle}, selected: {self.selected}")
+        # print(f"Rectangle: {rectangle}, selected: {self.selected}")
 
         number = self.rectangles.index(rectangle)
         print(f"Removing box {number} from figure.")
@@ -339,6 +346,17 @@ class Main(QMainWindow, Ui_MainWindow):
 
             i += 1
 
+    def get_parameter(self, name: str, default: object) -> object:
+        parts = name.split(".")
+
+        data = self.json_data
+        while len(parts) > 1:
+            key = parts.pop(0)
+
+            data = data[key]
+
+        return data.get(parts[0], default)
+
     def load_parameters(self):
         with open(os.path.join(dirname, "settings.json"), "r") as json_file:
             self.json_data = json.load(json_file)
@@ -346,33 +364,34 @@ class Main(QMainWindow, Ui_MainWindow):
             if "last_file" in self.json_data:
                 self.file_name = self.json_data["last_file"]
 
-            self.line_pix_size.setText(str(self.json_data["parameters"]["pixel_size"]))
-            self.line_magn.setText(str(self.json_data["parameters"]["magnification"]))
-            self.line_sub_pix.setText(str(self.json_data["parameters"]["sub_pixel"]))
-            self.line_fps.setText(str(self.json_data["parameters"]["fps"]))
-            self.line_start_frame.setText(str(self.json_data["parameters"]["start_frame"]))
-            self.line_stop_frame.setText(str(self.json_data["parameters"]["stop_frame"]))
-            self.line_w.setText(str(self.json_data["parameters"]["box_width"]))
-            self.line_h.setText(str(self.json_data["parameters"]["box_height"]))
-            self.line_delta.setText(str(self.json_data["parameters"]["delta"]))
-            self.line_chop_sec.setText(str(self.json_data["parameters"]["chop_sec"]))
-            self.checkBox_track.setChecked(self.json_data["parameters"]["tracking"])
-            self.checkBox_compare_first.setChecked(self.json_data["parameters"]["compare_to_first"])
-            self.checkBox_filter.setChecked(self.json_data["parameters"]["filter"])
-            self.checkBox_windowing.setChecked(self.json_data["parameters"]["windowing"])
-            self.checkBox_export.setChecked(self.json_data["parameters"]["export"])
-            self.checkBox_matlab.setChecked(self.json_data["parameters"]["matlab"])
+            self.line_pixel_size.setText(str(self.get_parameter("parameters.pixel_size", 1.12)))
+            self.line_magn.setText(str(self.get_parameter("parameters.magnification", 0)))
+            self.line_sub_pixel.setText(str(self.get_parameter("parameters.sub_pixel", 10)))
+            self.line_fps.setText(str(self.get_parameter("parameters.fps", 25)))
+            self.line_start_frame.setText(str(self.get_parameter("parameters.start_frame", 0)))
+            self.line_stop_frame.setText(str(self.get_parameter("parameters.stop_frame", 100)))
+            self.line_w.setText(str(self.get_parameter("parameters.box_width", 70)))
+            self.line_h.setText(str(self.get_parameter("parameters.box_height", 70)))
+            self.line_delta.setText(str(self.get_parameter("parameters.delta", 5)))
+            self.line_chop_sec.setText(str(self.get_parameter("parameters.chop_sec", 2)))
+            self.checkbox_track.setChecked(self.get_parameter("parameters.tracking", True))
+            self.checkbox_compare_first.setChecked(self.get_parameter("parameters.compare_to_first", False))
+            self.checkbox_filter.setChecked(self.get_parameter("parameters.filter", True))
+            self.checkbox_windowing.setChecked(self.get_parameter("parameters.windowing", True))
+            self.checkbox_contrast.setChecked(self.get_parameter("parameters.contrast", True))
+            self.checkbox_export.setChecked(self.get_parameter("parameters.export", False))
+            self.checkbox_matlab.setChecked(self.get_parameter("parameters.matlab", False))
 
-            self.view_position.setChecked(self.json_data["actions"]["position"])
-            self.view_position_x.setChecked(self.json_data["actions"]["position_x"])
-            self.view_position_y.setChecked(self.json_data["actions"]["position_y"])
-            self.view_position_all_on_one.setChecked(self.json_data["actions"]["position_all_on_one"])
-            self.view_phase.setChecked(self.json_data["actions"]["phase"])
-            self.view_violin.setChecked(self.json_data["actions"]["violin"])
-            self.view_violin_chop.setChecked(self.json_data["actions"]["violin_chop"])
-            self.view_violin_all_on_one.setChecked(self.json_data["actions"]["violin_all_on_one"])
-            self.view_step_length.setChecked(self.json_data["actions"]["step_length"])
-            self.view_experimental.setChecked(self.json_data["actions"]["experimental"])
+            self.view_position.setChecked(self.get_parameter("actions.position", False))
+            self.view_position_x.setChecked(self.get_parameter("actions.position_x", False))
+            self.view_position_y.setChecked(self.get_parameter("actions.position_y", False))
+            self.view_position_all_on_one.setChecked(self.get_parameter("actions.position_all_on_one", True))
+            self.view_phase.setChecked(self.get_parameter("actions.phase", False))
+            self.view_violin.setChecked(self.get_parameter("actions.violin", False))
+            self.view_violin_chop.setChecked(self.get_parameter("actions.violin_chop", False))
+            self.view_violin_all_on_one.setChecked(self.get_parameter("actions.violin_all_on_one", True))
+            self.view_step_length.setChecked(self.get_parameter("actions.step_length", False))
+            self.view_experimental.setChecked(self.get_parameter("actions.experimental", False))
 
             print("Parameters loaded.")
 
@@ -396,9 +415,9 @@ class Main(QMainWindow, Ui_MainWindow):
         self.json_data = {
             "last_file": self.file_name,
             "parameters": {
-                "pixel_size": float(self.line_pix_size.text()),
+                "pixel_size": float(self.line_pixel_size.text()),
                 "magnification": int(self.line_magn.text()),
-                "sub_pixel": int(self.line_sub_pix.text()),
+                "sub_pixel": int(self.line_sub_pixel.text()),
                 "fps": int(self.line_fps.text()),
                 "start_frame": int(self.line_start_frame.text()),
                 "stop_frame": int(self.line_stop_frame.text()),
@@ -406,12 +425,13 @@ class Main(QMainWindow, Ui_MainWindow):
                 "box_height": int(self.line_h.text()),
                 "delta": int(self.line_delta.text()),
                 "chop_sec": int(self.line_chop_sec.text()),
-                "tracking": self.checkBox_track.isChecked(),
-                "compare_to_first": self.checkBox_compare_first.isChecked(),
-                "filter": self.checkBox_filter.isChecked(),
-                "windowing": self.checkBox_windowing.isChecked(),
-                "export": self.checkBox_export.isChecked(),
-                "matlab": self.checkBox_matlab.isChecked()
+                "tracking": self.checkbox_track.isChecked(),
+                "compare_to_first": self.checkbox_compare_first.isChecked(),
+                "filter": self.checkbox_filter.isChecked(),
+                "windowing": self.checkbox_windowing.isChecked(),
+                "contrast": self.checkbox_contrast.isChecked(),
+                "export": self.checkbox_export.isChecked(),
+                "matlab": self.checkbox_matlab.isChecked()
             },
             "actions": {
                 "position": self.view_position.isChecked(),
@@ -448,26 +468,31 @@ class Main(QMainWindow, Ui_MainWindow):
 
         self.output_basepath = utils.ensure_directory(self.file_name, "results")
 
-        if self.checkBox_export.isChecked():
+        if self.checkbox_export.isChecked():
             write_target = utils.ensure_directory(self.file_name, "exports")
         else:
             write_target = None
 
-        print("Tracking: %s." % (self.checkBox_track.isChecked()))
-        self.solver = Solver(
+        print(f"(Re)loading solver module...")
+        import solver
+        importlib.reload(solver)
+
+        print(f"Tracking enabled: {self.checkbox_track.isChecked()}")
+        self.solver = solver.Solver(
             video_data=self.video_data,
-            fps=float(self.line_fps.text()),
             rectangles=self.rectangles,
-            upsample_factor=int(self.line_sub_pix.text()),
-            stop_frame=int(self.line_stop_frame.text()),
+            fps=float(self.line_fps.text()),
+            resolution=float(self.line_pixel_size.text()),
+            upsample_factor=int(self.line_sub_pixel.text()),
             start_frame=int(self.line_start_frame.text()),
-            res=float(self.line_pix_size.text()),
-            track=self.checkBox_track.isChecked(),
-            compare_first=self.checkBox_compare_first.isChecked(),
+            stop_frame=int(self.line_stop_frame.text()),
             delta=int(self.line_delta.text()),
-            filter=self.checkBox_filter.isChecked(),
-            windowing=self.checkBox_windowing.isChecked(),
-            matlab=self.checkBox_matlab.isChecked(),
+            track=self.checkbox_track.isChecked(),
+            compare_first=self.checkbox_compare_first.isChecked(),
+            filtering=self.checkbox_filter.isChecked(),
+            windowing=self.checkbox_windowing.isChecked(),
+            contrast=self.checkbox_contrast.isChecked(),
+            matlab=self.checkbox_matlab.isChecked(),
             write_target=write_target
         )
 
@@ -548,15 +573,16 @@ class Main(QMainWindow, Ui_MainWindow):
             shift_x_y_error=self.solver.shift_x_y_error,
             box_shift=self.solver.box_shift,
             fps=self.solver.fps,
-            res=self.solver.res,
+            res=self.solver.resolution,
             input_path=self.file_name,
             output_basepath=self.output_basepath,
             plots_dict=self.plots_dict,
             rectangles=self.rectangles,
             chop_duration=float(self.line_chop_sec.text()),
-            start_frame=self.solver.start_frame)
+            start_frame=self.solver.start_frame
+        )
 
-        print("%d plots shown." % (len(self.opened_plots)))
+        print(f"{len(self.opened_plots)} plots shown.")
 
     def reset_boxes(self):
         self.load_and_show_file(load_file=False)  # reloading the file resets everything
@@ -572,10 +598,11 @@ class Main(QMainWindow, Ui_MainWindow):
                 shift_x_y_error=self.solver.shift_x_y_error,
                 box_shift=self.solver.box_shift,
                 fps=self.solver.fps,
-                res=self.solver.res,
+                res=self.solver.resolution,
                 output_basepath=self.output_basepath,
                 rectangles=self.rectangles,
-                start_frame=self.solver.start_frame)
+                start_frame=self.solver.start_frame
+            )
 
         print("Files exported.")
 
@@ -586,11 +613,11 @@ if __name__ == "__main__":
 
     sys.stdout.flush()
 
-    parser = argparse.ArgumentParser(description="Nanomotion software.")
+    parser = argparse.ArgumentParser(description="Nanomotion analysis software.")
     parser.add_argument("-o", "--open", help="File to open.", default=None)
-    parser.add_argument("-a", "--autostart", help="Start the analysis.", action="store_true")
-    parser.add_argument("-r", "--show_results", help="Show the results after the analysis.", action="store_true")
-    parser.add_argument("-x", "--export_results", help="Export  the results after the analysis.", action="store_true")
+    parser.add_argument("-a", "--autostart", help="Automatically start the analysis.", action="store_true")
+    parser.add_argument("-r", "--show_results", help="Show results after the analysis.", action="store_true")
+    parser.add_argument("-x", "--export_results", help="Export results after the analysis.", action="store_true")
     parser.add_argument("-q", "--quit", help="Quit after the analysis.", action="store_true")
 
     args = parser.parse_args()
