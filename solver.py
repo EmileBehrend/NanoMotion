@@ -11,6 +11,7 @@ import matplotlib.patches
 import numpy as np
 import scipy as sp
 import skimage.color
+import skimage.exposure
 import skimage.filters
 import skimage.registration
 import skimage.restoration
@@ -26,20 +27,22 @@ class Solver(QThread):
     mutex = threading.Lock()
 
     def __init__(self, video_data, rectangles, fps, resolution, upsample_factor, start_frame, stop_frame, track, compare_first, delta, filtering, windowing,
-                 contrast,
-                 matlab, write_target):
+                 contrast, matlab, exports_folder, results_folder):
         QThread.__init__(self)
         self.video_data: VideoSequence = video_data  # store access to the video file to iterate over the frames
 
         self.fps = fps  # frames per seconds
         self.resolution = resolution  # size of one pixel (um / pixel)
         self.upsample_factor = upsample_factor
-        self.delta = delta
         self.track = track
+
         self.compare_first = compare_first
+        self.delta = delta
+
         self.filtering = filtering
         self.windowing = windowing
         self.contrast = contrast
+
         self.matlab = matlab
         self.matlab_engine = None
 
@@ -67,6 +70,8 @@ class Solver(QThread):
         self.col_min = []
         self.col_max = []
 
+        self.changing_pixels = np.zeros(list(np.shape(self.video_data.get_frame(0)))[:2], dtype=np.float64)
+
         self.pixels = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
         self.mean = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
         self.shift_x = [[None for _ in range(self.start_frame, self.stop_frame + 1)] for _ in self.local_rectangles]
@@ -80,7 +85,8 @@ class Solver(QThread):
         self.progress = 0
         self.current_i = -1
 
-        self.write_target = write_target
+        self.exports_folder = exports_folder
+        self.results_folder = results_folder
 
         self.debug_frames = []
 
@@ -252,35 +258,40 @@ class Solver(QThread):
 
         return colored_frame_n
 
+    def _calculate_difference(self, reference, new):
+        return cv2.absdiff(reference, new)
+
     def _compute_phase_corr(self):  # compute the cross-correlation for all frames for the selected polygon crop
         with self.mutex:
             print(f"self.go_on is set to {self.go_on}.")
 
+        frame_first = self._prepare_image(self.video_data.get_frame(self.start_frame))  # store the starting subimages for later comparison
+
+        whole_images = []
         images = []  # last image subimages array
 
         delta_images = []
-        if self.delta > 1:  # TODO: rework this
-            for i in range(self.delta):
-                frame = self._prepare_image(self.video_data.get_frame(self.start_frame + i))
+        for i in range(self.delta):
+            frame = self._prepare_image(self.video_data.get_frame(self.start_frame + i))
 
-                delta_j = []
-                for j in range(len(self.local_rectangles)):  # j iterates over all boxes
-                    frame_j, pixels = self._filter_image_subset(self._get_image_subset(frame, j))
+            whole_images.append(frame)
 
-                    delta_j.append(frame_j)
+            delta_j = []
+            for j in range(len(self.local_rectangles)):  # j iterates over all boxes
+                frame_j, pixels = self._filter_image_subset(self._get_image_subset(frame, j))
 
-                    # TODO: calculate shifts between delta pixels
-                    self.pixels[j][i] = pixels
-                    self.mean[j][i] = np.mean(frame_j)
-                    self.shift_x[j][i] = 0
-                    self.shift_y[j][i] = 0
-                    self.shift_p[j][i] = 0
-                    self.shift_x_y_error[j][i] = 0
-                    self.box_shift[j][0] = [0, 0]
+                delta_j.append(frame_j)
 
-                delta_images.append(delta_j)
+                # TODO: calculate shifts between delta pixels
+                self.pixels[j][i] = pixels
+                self.mean[j][i] = np.mean(frame_j)
+                self.shift_x[j][i] = 0
+                self.shift_y[j][i] = 0
+                self.shift_p[j][i] = 0
+                self.shift_x_y_error[j][i] = 0
+                self.box_shift[j][0] = [0, 0]
 
-        frame_first = self._prepare_image(self.video_data.get_frame(self.start_frame))  # store the starting subimages for later comparison
+            delta_images.append(delta_j)
 
         for j in range(len(self.local_rectangles)):  # j iterates over all boxes
             image_first, pixels = self._filter_image_subset(self._get_image_subset(frame_first, j))
@@ -337,26 +348,7 @@ class Solver(QThread):
 
             self.frame_n = self._prepare_image(read_frame)
 
-            # if i not in queue:
-            #     self.frame_n = self._prepare_image(self.video_data.get_frame(i))
-            # else:
-            #     self.frame_n = self._prepare_image(queue[i].result())
-            #
-            # queue[i] = None
-            #
-            # if i < self.stop_frame:  # pooling the next image helps when analyzing a low number of cells
-            #     with concurrent.futures.ThreadPoolExecutor() as executor:
-            #         queue[i + 1] = executor.submit(self.video_data.get_frame, i + 1)
-            #
-            #         # TODO: properly implement multi-threaded reads
-            #         # for r in range(i + 1, i + min(5, self.stop_frame - i + 1)):  # pool next 5 frames
-            #         #     if r in queue:  # already pooled
-            #         #         continue
-            #         #
-            #         #     # print("Pooling frame: %d." % r)
-            #         #     queue[r] = executor.submit(self.videodata.get_frame, r)
-
-            if self.write_target is not None:
+            if self.exports_folder is not None:
                 colored_frame_n = skimage.color.gray2rgba(self.frame_n)  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
                 # colored_frame_n = self.frame_n.copy()  # rgb (, 3) with alpha channel (, 4) because matplotlib.cm returns one (, 4)
 
@@ -472,16 +464,13 @@ class Solver(QThread):
                 #     print("Box %d - raw shift: (%f, %f), relative shift: (%f, %f), cumulated shift: (%f, %f), error: %f."
                 #           % (j, shift[0], shift[1], relative_shift[0], relative_shift[1], self.cumulated_shift[j][0], self.cumulated_shift[j][1], error))
 
-                if self.write_target is not None:
+                if self.exports_folder is not None:
                     colored_frame_n = self._combine_subset(colored_frame_n, j, image_n)
 
                 if not self.compare_first:
-                    if self.delta > 1:
-                        images[j] = delta_images[1][j]  # TODO: generalize delta (1 means previous image, higher means storing a list)
+                    images[j] = delta_images[0][j]
 
-                        delta_images[0][j] = image_n  # first array will be moved to the last position later
-                    else:  # store the current image to be compared later
-                        images[j] = image_n
+                    delta_images[0][j] = image_n  # first array will be moved to the last position later
 
                 if i in self.debug_frames:
                     print("Box %d, frame %d." % (j, i))
@@ -502,11 +491,18 @@ class Solver(QThread):
                     # Current image (i): parameters[j][0]
                     cv2.imwrite(("./debug/box_%d-%d.png" % (j, i)), self._get_image_subset(self.video_data.get_frame(i), j))
 
-            if self.delta > 1:
-                delta_images.append(delta_images.pop(0))  # move first element (which was updated now) to the last position
+            if self.compare_first:
+                self.changing_pixels += self._calculate_difference(frame_first, self.frame_n)
+            else:
+                self.changing_pixels += self._calculate_difference(whole_images[0], self.frame_n)
 
-            if self.write_target is not None:
-                cv2.imwrite("%s_image_%d.png" % (self.write_target, i), colored_frame_n * 255)
+            delta_images.append(delta_images.pop(0))  # move first element (which was updated now) to the last position
+
+            whole_images.append(self.frame_n)
+            whole_images.pop(0)
+
+            if self.exports_folder is not None:
+                cv2.imwrite("%s_image_%d.png" % (self.exports_folder, i), colored_frame_n * 255)
 
             self.progress = int(((i - self.start_frame) / length) * 100)
             if self.progress > progress_pivot + 4:
@@ -522,6 +518,18 @@ class Solver(QThread):
 
             inverted_box_shift = [[entry[0], -entry[1]] for entry in self.box_shift[j]]
             self.box_shift[j] = inverted_box_shift
+
+        self.changing_pixels = np.interp(self.changing_pixels, (self.changing_pixels.min(), self.changing_pixels.max()), (0, 1))
+        colored_changing_pixels = matplotlib.cm.jet(self.changing_pixels)
+
+        # print(f"Changing pixels: {self.changing_pixels}, colored: {colored_changing_pixels}")
+        # print(np.shape(colored_changing_pixels))
+
+        skimage.io.imsave(f"{self.results_folder}_changing_pixels.png", colored_changing_pixels)
+
+        # cv2.imwrite(f"{self.results_folder}_changing_pixels.png", colored_changing_pixels * 255)
+        # cv2.imshow("Changing pixels", colored_changing_pixels * 255)
+        # cv2.waitKey(0)
 
     def _crop_coord(self, target=None):
         if target is None:

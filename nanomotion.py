@@ -493,7 +493,8 @@ class Main(QMainWindow, Ui_MainWindow):
             windowing=self.checkbox_windowing.isChecked(),
             contrast=self.checkbox_contrast.isChecked(),
             matlab=self.checkbox_matlab.isChecked(),
-            write_target=write_target
+            exports_folder=write_target,
+            results_folder=self.output_basepath
         )
 
         pg.exporters.ImageExporter(self.pg_image_item.scene()).export(f"{self.output_basepath}_overview.png")
